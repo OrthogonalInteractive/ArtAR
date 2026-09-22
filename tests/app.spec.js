@@ -6,11 +6,17 @@ import { defaults } from '../src/data/storage.js'
 
 const setArt = vi.fn(async () => true)
 const setDebug = vi.fn()
+const startAR = vi.fn(async () => true)
+vi.mock('../src/ar/engine.js', () => ({
+  prepareAR: vi.fn(async () => {}),
+  cameraUnsupportedReason: () => null,
+}))
 const Studio = defineComponent({
   setup(_, { expose, emit }) {
     expose({
       setArt,
       setDebug,
+      startAR,
       nudge: vi.fn(),
       guides: vi.fn(),
       tone: vi.fn(),
@@ -43,6 +49,7 @@ beforeEach(() => {
   localStorage.clear()
   setArt.mockClear()
   setDebug.mockClear()
+  startAR.mockReset().mockResolvedValue(true)
   setArt.mockResolvedValue(true)
 })
 afterEach(() => {
@@ -51,6 +58,26 @@ afterEach(() => {
   delete document.modelContext
 })
 describe('gallery flows', () => {
+  it('shows an asynchronous AR startup rejection and allows a new attempt', async () => {
+    const w = create()
+    await flushPromises()
+    const arButton = w.findAll('button').find((b) => b.text().includes('ARで'))
+    expect(arButton).toBeDefined()
+    await arButton.trigger('click')
+    await flushPromises()
+    startAR.mockRejectedValueOnce(new Error('カメラの権限を確認してください'))
+    const start = w
+      .findAll('button')
+      .find((b) => b.text().includes('カメラを開始'))
+    await start.trigger('click')
+    await flushPromises()
+    expect(w.find('[role="alert"]').text()).toContain('カメラの権限')
+    expect(startAR).toHaveBeenCalledOnce()
+    const retry = w.findAll('button').find((b) => b.text() === '再試行')
+    await retry.trigger('click')
+    await flushPromises()
+    expect(w.find('[role="alert"]').exists()).toBe(false)
+  })
   it('enables diagnostics from the shared debug URL and allows switching them off in AR', async () => {
     history.replaceState({}, '', '/?debug=1')
     const w = create()

@@ -21,8 +21,8 @@ let engine, pipeline, xrScene, now, updates, stop
 beforeEach(async () => {
   vi.stubGlobal('isSecureContext', true)
   vi.stubGlobal('navigator', {
-    userAgent: 'Android Chrome',
-    platform: 'Linux',
+    userAgent: 'iPhone Safari',
+    platform: 'iPhone',
     mediaDevices: { getUserMedia: vi.fn() },
   })
   vi.stubGlobal(

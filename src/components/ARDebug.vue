@@ -34,6 +34,20 @@ async function copy() {
         {{ copied ? 'コピー済み' : '診断をコピー' }}
       </button>
     </div>
+    <p v-if="data.backend === 'webxr'" class="debug-message">
+      WebXR · Depth：{{
+        {
+          active: '取得中',
+          waiting: '取得待ち',
+          unavailable: '非対応',
+          error: '取得エラー',
+        }[data.webxr?.depth] || '準備中'
+      }}
+      / 垂直面：{{ data.webxr?.nativePlaneCount || 0 }} / 点群：{{
+        data.webxr?.pointSource === 'depth' ? '深度' : 'ヒットテスト'
+      }}
+    </p>
+    <p v-else class="debug-message">8th Wall · 空間特徴点</p>
     <div class="debug-legend" aria-label="デバッグの凡例">
       <span class="debug-points">● 点群</span
       ><span class="debug-pending">■ 判定待ち</span>
@@ -108,8 +122,11 @@ async function copy() {
         同一面20点以上 / 幅45cm・高さ40cm以上 / ばらつき28mm未満 /
         3回一致。点群は7m未満・最大800点。寸法は補正前の推定値です。
       </p>
+      <p v-if="data.backend === 'webxr'">
+        ネイティブ面は幅45cm・高さ40cm以上、3回一致で採用。深度・ヒットテストの点群には上記の平面判定も行います。Depthがない場合は、壁の上下・左右を映して観測範囲を広げてください。
+      </p>
       <p>
-        色の面は特徴点から推定した範囲です。物理的な壁の端や障害物を示すものではありません。線の矢印は壁の表向きです。
+        色の面は観測された範囲です。物理的な壁の端や障害物を示すものではありません。線の矢印は壁の表向きです。
       </p>
     </details>
     <div v-if="copyError" class="debug-copy-fallback">

@@ -498,6 +498,9 @@ label {
   touch-action: none;
   cursor: grab;
 }
+.room-canvas[hidden] {
+  display: none;
+}
 .room-canvas:active {
   cursor: grabbing;
 }
@@ -1321,6 +1324,21 @@ label {
   height: 100%;
   display: block;
   touch-action: none;
+}
+/* The camera and art are composited by WebXR. Keep only controls in the DOM layer.
+   Opacity preserves pointer hit testing on the canvas used for wall dragging. */
+.webxr-active,
+.webxr-active .workspace,
+.webxr-active .preview-panel,
+.webxr-active .stage,
+.webxr-active .scene-host {
+  background: transparent !important;
+}
+.webxr-active .ar-canvas {
+  opacity: 0;
+}
+.app-shell:xr-overlay {
+  background: transparent;
 }
 .ar-active .stage-top {
   top: max(18px, env(safe-area-inset-top));

@@ -11,12 +11,15 @@ import {
 } from './walls.js'
 import { artDimensions } from '../data/catalog.js'
 import { createARDebugLayer, debugSummary } from './debug.js'
+import { arBackend, prepareWebXR, WEBXR_UNAVAILABLE } from './platform.js'
+import { createWebXRSession } from './webxr.js'
 
 // Matches the engine distribution used by ../portfolio. No API key required.
 export const ENGINE_URL =
   'https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1.0.0/dist/xr.js'
 let loading
 export function prepareAR() {
+  if (arBackend() === 'webxr') return prepareWebXR()
   if (window.XR8) return Promise.resolve(window.XR8)
   if (loading) return loading
   window.THREE = THREE
@@ -62,6 +65,8 @@ export function cameraUnsupportedReason() {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   if (!handheld)
     return 'PCではルームプレビューをご利用ください。公開URLをiPhone / iPadまたはAndroidで開くと、ARを開始できます。'
+  if (arBackend() === 'webxr')
+    return navigator.xr?.requestSession ? null : WEBXR_UNAVAILABLE
   if (!navigator.mediaDevices?.getUserMedia)
     return 'カメラを利用できません。iPhoneはSafari、AndroidはChromeで開いてください。'
   return null
@@ -94,6 +99,9 @@ export function createExperience({ canvas, onState, onError }) {
   let raf,
     arCanvas,
     xr,
+    webxr = null,
+    backend = null,
+    xrCapabilities = null,
     resizeObserver,
     dragPointer = null,
     dragOffset = null
@@ -110,6 +118,8 @@ export function createExperience({ canvas, onState, onError }) {
   const notify = (extra = {}) =>
     onState({
       mode,
+      backend,
+      xrCapabilities,
       placed: !!selectedWall,
       wallCount: walls.length,
       position: { ...placement },
@@ -215,6 +225,8 @@ export function createExperience({ canvas, onState, onError }) {
   }
   function preview() {
     mode = 'preview'
+    backend = null
+    xrCapabilities = null
     unitsPerMeter = 1
     tracking = true
     selectedWall = null
@@ -430,15 +442,22 @@ export function createExperience({ canvas, onState, onError }) {
   function stopAR() {
     if (mode !== 'ar') return
     running = false
-    xr?.stop()
-    xr?.clearCameraPipelineModules()
+    const oldRenderer = renderer
+    if (webxr) {
+      const session = webxr
+      webxr = null
+      void session.stop().finally(() => oldRenderer?.dispose())
+    } else {
+      xr?.stop()
+      xr?.clearCameraPipelineModules()
+      oldRenderer?.dispose()
+    }
     tracker.reset()
     window.removeEventListener('resize', resizeAR)
     unbind(arCanvas)
     arCanvas.remove()
     arCanvas = null
     clearScene()
-    renderer?.dispose()
     canvas.hidden = false
     preview()
     if (art) void setArt(art)
@@ -448,7 +467,222 @@ export function createExperience({ canvas, onState, onError }) {
     arCanvas.width = window.innerWidth
     arCanvas.height = window.innerHeight
   }
+  function updateTracking(reality) {
+    if (!reality || !running || !camera) return
+    xrCapabilities = reality.webxr || null
+    tracking = reality.trackingStatus === 'NORMAL'
+    debugLayer?.setTracking(tracking)
+    if (reality.trackingStatus !== lastStatus) {
+      lastStatus = reality.trackingStatus
+      notify({
+        message: tracking
+          ? ''
+          : '空間を再認識しています。端末をゆっくり動かしてください。',
+      })
+    }
+    if (model) model.visible = tracking && !!selectedWall
+    const now = performance.now()
+    if (!tracking) {
+      // Do not leave an old center hit or diagnostic pretending tracking is live.
+      candidateWall = null
+      rayPoint = null
+      diagnostics = null
+      detectionAt = null
+      lastDetection = 0
+    }
+    if (tracking && now - lastDetection > 650) {
+      lastDetection = now
+      const report = debugEnabled ? {} : null
+      const startedAt = performance.now()
+      const detected = detectVerticalWalls(
+        reality.worldPoints || [],
+        camera.position,
+        { diagnostics: report },
+      )
+      if (backend === 'webxr') {
+        for (const wall of detected)
+          wall.source = `webxr-${reality.webxr.pointSource}`
+        // Prefer native polygons to a second estimate of the same plane.
+        for (const native of reality.nativeWalls || []) {
+          for (let i = detected.length - 1; i >= 0; i--) {
+            const estimate = detected[i]
+            if (
+              estimate.normal.dot(native.normal) > 0.985 &&
+              Math.abs(
+                native.normal.dot(estimate.origin.clone().sub(native.origin)),
+              ) < 0.1
+            )
+              detected.splice(i, 1)
+          }
+          detected.push(native)
+        }
+        if (report && detected.length) report.status = 'detected'
+      }
+      detectionMs = performance.now() - startedAt
+      detectionAt = now
+      diagnostics = report
+      const found = tracker.update(detected, now)
+      // Preserve explicit boundary edits and the selected wall's stable pose.
+      walls = found.map(
+        (w) =>
+          walls.find(
+            (old) =>
+              old.id === w.id &&
+              (old.id === selectedWall?.id || old.source === 'manual'),
+          ) || w,
+      )
+      if (selectedWall && !walls.some((w) => w.id === selectedWall.id))
+        walls.push(selectedWall)
+      const viewport = arCanvas.getBoundingClientRect()
+      const hit = pick({
+        clientX: viewport.left + viewport.width / 2,
+        clientY: viewport.top + viewport.height / 2,
+      })
+      candidateWall = hit?.wall
+      rayPoint = hit?.local
+      if (debugEnabled)
+        debugLayer?.updateWalls(
+          walls,
+          diagnostics?.candidates || [],
+          selectedWall?.id,
+        )
+      notify({ pointCount: reality.worldPoints?.length || 0 })
+    }
+    // HUD/point uploads run at 4 Hz; the camera renders their world positions every frame.
+    if (debugEnabled && now - lastDebugUpdate >= 250) {
+      lastDebugUpdate = now
+      const sampledCount =
+        debugLayer?.updatePoints(reality.worldPoints || [], camera.position) ||
+        0
+      latestDebug = debugSummary({
+        backend,
+        webxr: xrCapabilities,
+        trackingStatus: reality.trackingStatus,
+        trackingReason: reality.trackingReason || '',
+        rawCount: reality.worldPoints?.length || 0,
+        sampledCount,
+        diagnostics,
+        walls,
+        tracker: tracker.snapshot(),
+        hit: candidateWall,
+        fits:
+          tracking && candidateWall && art
+            ? !!constrain(candidateWall, rayPoint)
+            : null,
+        detectionMs,
+        detectionAgeMs: detectionAt === null ? null : now - detectionAt,
+        tracking,
+      })
+      notify()
+    }
+  }
   function startAR(host) {
+    if (mode === 'ar' || disposed) return
+    return arBackend() === 'webxr' ? startWebXR(host) : startLegacyAR(host)
+  }
+  async function startWebXR(host) {
+    const unsupported = cameraUnsupportedReason()
+    if (unsupported) throw new Error(unsupported)
+    cancelAnimationFrame(raf)
+    resizeObserver?.disconnect()
+    clearScene()
+    renderer.dispose()
+    canvas.hidden = true
+    mode = 'ar'
+    backend = 'webxr'
+    tracking = false
+    running = true
+    walls = []
+    tracker.reset()
+    unitsPerMeter = 1
+    lastDetection = 0
+    lastStatus = ''
+    diagnostics = null
+    lastDebugUpdate = 0
+    detectionAt = null
+    latestDebug = debugSummary()
+    candidateWall = null
+    rayPoint = null
+    interaction = 'place'
+    calibration = []
+    dragPointer = null
+    arCanvas = document.createElement('canvas')
+    arCanvas.className = 'ar-canvas'
+    host.appendChild(arCanvas)
+    bind(arCanvas)
+    let session
+    try {
+      scene = new THREE.Scene()
+      camera = new THREE.PerspectiveCamera(60, 1, 0.05, 30)
+      const sessionRenderer = new THREE.WebGLRenderer({
+        canvas: arCanvas,
+        antialias: true,
+        alpha: true,
+      })
+      renderer = sessionRenderer
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+      renderer.setSize(window.innerWidth, window.innerHeight, false)
+      renderer.setClearColor(0x000000, 0)
+      renderer.outputColorSpace = THREE.SRGBColorSpace
+      lightScene()
+      arSceneReady = true
+      if (debugEnabled) {
+        debugLayer = createARDebugLayer(scene)
+        debugLayer.setEnabled(true)
+      }
+      if (art) void setArt(art)
+      session = createWebXRSession({
+        renderer,
+        scene,
+        camera,
+        overlay: host.closest('.app-shell') || host,
+        onFrame: updateTracking,
+        onEnd() {
+          if (webxr === session && !disposed) stopAR()
+        },
+        onError,
+        onReset() {
+          // A reference-space reset invalidates old room coordinates.
+          tracker.reset()
+          diagnostics = null
+          detectionAt = null
+          lastDetection = 0
+          tracking = false
+          debugLayer?.setTracking(false)
+          walls = []
+          selectedWall = null
+          candidateWall = null
+          rayPoint = null
+          calibration = []
+          interaction = 'place'
+          dragPointer = null
+          if (model) model.visible = false
+          debugLayer?.clear()
+          updateGuide()
+          notify({
+            message:
+              '空間の座標が更新されました。壁を再認識して配置してください。',
+          })
+        },
+      })
+      webxr = session
+      notify({ message: 'カメラを起動しています…' })
+      const started = await session.start()
+      if (!started || disposed || webxr !== session) return false
+      notify({
+        message:
+          '壁を上下・左右にゆっくり映して、飾る範囲を認識させてください。',
+      })
+      return true
+    } catch (error) {
+      if (!disposed && (!session || webxr === session)) {
+        stopAR()
+        throw error
+      }
+      return false
+    }
+  }
+  function startLegacyAR(host) {
     const unsupported = cameraUnsupportedReason()
     if (unsupported) throw new Error(unsupported)
     xr = window.XR8
@@ -459,6 +693,7 @@ export function createExperience({ canvas, onState, onError }) {
     renderer.dispose()
     canvas.hidden = true
     mode = 'ar'
+    backend = '8thwall'
     tracking = false
     running = true
     walls = []
@@ -509,94 +744,7 @@ export function createExperience({ canvas, onState, onError }) {
           })
         },
         onUpdate({ processCpuResult }) {
-          const reality = processCpuResult?.reality
-          if (!reality || !running || !camera) return
-          tracking = reality.trackingStatus === 'NORMAL'
-          debugLayer?.setTracking(tracking)
-          if (reality.trackingStatus !== lastStatus) {
-            lastStatus = reality.trackingStatus
-            notify({
-              message: tracking
-                ? ''
-                : '空間を再認識しています。端末をゆっくり動かしてください。',
-            })
-          }
-          if (model) model.visible = tracking && !!selectedWall
-          const now = performance.now()
-          if (!tracking) {
-            // Do not leave an old center hit or diagnostic pretending tracking is live.
-            candidateWall = null
-            rayPoint = null
-            diagnostics = null
-            detectionAt = null
-            lastDetection = 0
-          }
-          if (tracking && now - lastDetection > 650) {
-            lastDetection = now
-            const report = debugEnabled ? {} : null
-            const startedAt = performance.now()
-            const detected = detectVerticalWalls(
-              reality.worldPoints || [],
-              camera.position,
-              { diagnostics: report },
-            )
-            detectionMs = performance.now() - startedAt
-            detectionAt = now
-            diagnostics = report
-            const found = tracker.update(detected, now)
-            // Preserve explicit boundary edits and the selected wall's stable pose.
-            walls = found.map(
-              (w) =>
-                walls.find(
-                  (old) =>
-                    old.id === w.id &&
-                    (old.id === selectedWall?.id || old.source === 'manual'),
-                ) || w,
-            )
-            if (selectedWall && !walls.some((w) => w.id === selectedWall.id))
-              walls.push(selectedWall)
-            const viewport = arCanvas.getBoundingClientRect()
-            const hit = pick({
-              clientX: viewport.left + viewport.width / 2,
-              clientY: viewport.top + viewport.height / 2,
-            })
-            candidateWall = hit?.wall
-            rayPoint = hit?.local
-            if (debugEnabled)
-              debugLayer?.updateWalls(
-                walls,
-                diagnostics?.candidates || [],
-                selectedWall?.id,
-              )
-            notify({ pointCount: reality.worldPoints?.length || 0 })
-          }
-          // HUD/point uploads run at 4 Hz; the camera renders their world positions every frame.
-          if (debugEnabled && now - lastDebugUpdate >= 250) {
-            lastDebugUpdate = now
-            const sampledCount =
-              debugLayer?.updatePoints(
-                reality.worldPoints || [],
-                camera.position,
-              ) || 0
-            latestDebug = debugSummary({
-              trackingStatus: reality.trackingStatus,
-              trackingReason: reality.trackingReason || '',
-              rawCount: reality.worldPoints?.length || 0,
-              sampledCount,
-              diagnostics,
-              walls,
-              tracker: tracker.snapshot(),
-              hit: candidateWall,
-              fits:
-                tracking && candidateWall && art
-                  ? !!constrain(candidateWall, rayPoint)
-                  : null,
-              detectionMs,
-              detectionAgeMs: detectionAt === null ? null : now - detectionAt,
-              tracking,
-            })
-            notify()
-          }
+          updateTracking(processCpuResult?.reality)
         },
         onCameraStatusChange({ status }) {
           if (status === 'failed') {
@@ -689,6 +837,7 @@ export function createExperience({ canvas, onState, onError }) {
     },
     reset() {
       if (mode === 'ar') {
+        webxr?.reset()
         tracker.reset()
         walls = []
         selectedWall = null
@@ -790,8 +939,16 @@ export function createExperience({ canvas, onState, onError }) {
       cancelAnimationFrame(raf)
       resizeObserver?.disconnect()
       if (mode === 'ar') {
-        xr?.stop()
-        xr?.clearCameraPipelineModules()
+        if (webxr) {
+          const session = webxr,
+            oldRenderer = renderer
+          webxr = null
+          void session.stop().finally(() => oldRenderer?.dispose())
+          renderer = null
+        } else {
+          xr?.stop()
+          xr?.clearCameraPipelineModules()
+        }
         unbind(arCanvas)
         arCanvas.remove()
       }

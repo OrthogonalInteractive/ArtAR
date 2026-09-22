@@ -112,6 +112,7 @@ function toggleDebug() {
 }
 async function openAR() {
   dialog.value = 'ar'
+  arReady.value = false
   arError.value = cameraUnsupportedReason() || ''
   if (arError.value) return
   arLoading.value = true
@@ -124,13 +125,19 @@ async function openAR() {
     arLoading.value = false
   }
 }
-function startAR() {
+async function startAR() {
+  if (arLoading.value) return
+  arLoading.value = true
   try {
-    studio.value.startAR()
+    const starting = studio.value.startAR()
     dialog.value = null
     mobileCollection.value = false
+    await starting
   } catch (e) {
     arError.value = e.message
+    dialog.value = 'ar'
+  } finally {
+    arLoading.value = false
   }
 }
 function stopAR() {
@@ -294,7 +301,11 @@ onBeforeUnmount(() => {
   <div
     :class="[
       'app-shell',
-      { 'ar-active': isAR, 'debug-active': isAR && debugEnabled },
+      {
+        'ar-active': isAR,
+        'webxr-active': isAR && state.backend === 'webxr',
+        'debug-active': isAR && debugEnabled,
+      },
     ]"
   >
     <header class="app-header">
@@ -433,7 +444,9 @@ onBeforeUnmount(() => {
               {{
                 state.canPlace
                   ? '壁を検出しました'
-                  : '壁の模様や角にカメラを向けてください'
+                  : state.backend === 'webxr'
+                    ? '壁を上下・左右にゆっくり映してください'
+                    : '壁の模様や角にカメラを向けてください'
               }}
             </p>
             <button

@@ -55,6 +55,8 @@ export function detectionMessage({
 
 /** No video, images or raw room coordinates are included in the copyable report. */
 export function debugSummary({
+  backend = '8thwall',
+  webxr = null,
   trackingStatus = 'INITIALIZING',
   trackingReason = '',
   rawCount = 0,
@@ -69,6 +71,8 @@ export function debugSummary({
   tracking = false,
 } = {}) {
   return {
+    backend,
+    webxr,
     trackingStatus,
     trackingReason,
     rawCount,
@@ -103,7 +107,7 @@ export function debugSummary({
   }
 }
 
-/** Uses XR8's scene/camera, so all debug geometry shares its world coordinates. */
+/** Uses the active AR scene/camera so diagnostics share its world coordinates. */
 export function createARDebugLayer(scene) {
   const root = new THREE.Group()
   root.name = 'artar-debug'
