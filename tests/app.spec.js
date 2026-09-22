@@ -5,10 +5,12 @@ import App from '../src/App.vue'
 import { defaults } from '../src/data/storage.js'
 
 const setArt = vi.fn(async () => true)
+const setDebug = vi.fn()
 const Studio = defineComponent({
   setup(_, { expose, emit }) {
     expose({
       setArt,
+      setDebug,
       nudge: vi.fn(),
       guides: vi.fn(),
       tone: vi.fn(),
@@ -40,6 +42,7 @@ beforeEach(() => {
   history.replaceState({}, '', '/')
   localStorage.clear()
   setArt.mockClear()
+  setDebug.mockClear()
   setArt.mockResolvedValue(true)
 })
 afterEach(() => {
@@ -48,6 +51,22 @@ afterEach(() => {
   delete document.modelContext
 })
 describe('gallery flows', () => {
+  it('enables diagnostics from the shared debug URL and allows switching them off in AR', async () => {
+    history.replaceState({}, '', '/?debug=1')
+    const w = create()
+    await flushPromises()
+    expect(setDebug).toHaveBeenCalledWith(true)
+    w.findComponent(Studio).vm.$emit('state', {
+      mode: 'ar',
+      placed: false,
+      tracking: false,
+    })
+    await flushPromises()
+    expect(w.find('.ar-debug-panel').exists()).toBe(true)
+    await w.find('.debug-toggle').trigger('click')
+    expect(setDebug).toHaveBeenLastCalledWith(false)
+    expect(w.find('.ar-debug-panel').exists()).toBe(false)
+  })
   it('selects a replacement with its registered size and updates the details', async () => {
     const w = create()
     await flushPromises()

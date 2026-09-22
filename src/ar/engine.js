@@ -10,6 +10,7 @@ import {
   createWallTracker,
 } from './walls.js'
 import { artDimensions } from '../data/catalog.js'
+import { createARDebugLayer, debugSummary } from './debug.js'
 
 // Matches the engine distribution used by ../portfolio. No API key required.
 export const ENGINE_URL =
@@ -96,6 +97,14 @@ export function createExperience({ canvas, onState, onError }) {
     resizeObserver,
     dragPointer = null,
     dragOffset = null
+  let debugEnabled = false,
+    arSceneReady = false,
+    debugLayer = null,
+    diagnostics = null,
+    lastDebugUpdate = 0,
+    detectionMs = 0,
+    detectionAt = null,
+    latestDebug = debugSummary()
   const tracker = createWallTracker(),
     raycaster = new THREE.Raycaster()
   const notify = (extra = {}) =>
@@ -109,6 +118,8 @@ export function createExperience({ canvas, onState, onError }) {
       wallSource: selectedWall?.source,
       interaction,
       canPlace: !!candidateWall,
+      debugEnabled,
+      debug: debugEnabled ? latestDebug : null,
       ...extra,
     })
   const dimensions = () => artDimensions(art, unitsPerMeter)
@@ -182,6 +193,12 @@ export function createExperience({ canvas, onState, onError }) {
     placement = { x: fit.x, y: fit.y }
     interaction = 'place'
     if (mode === 'ar') tracker.lock(wall.id)
+    if (debugEnabled)
+      debugLayer?.updateWalls(
+        walls,
+        diagnostics?.candidates || [],
+        selectedWall.id,
+      )
     applyPosition()
     updateGuide()
     notify({
@@ -402,6 +419,9 @@ export function createExperience({ canvas, onState, onError }) {
   }
   function clearScene() {
     generation++
+    arSceneReady = false
+    debugLayer?.dispose()
+    debugLayer = null
     if (scene) disposeObject(scene)
     model = null
     guide = null
@@ -445,6 +465,11 @@ export function createExperience({ canvas, onState, onError }) {
     unitsPerMeter = 1
     lastDetection = 0
     lastStatus = ''
+    diagnostics = null
+    lastDebugUpdate = 0
+    detectionMs = 0
+    detectionAt = null
+    latestDebug = debugSummary()
     candidateWall = null
     rayPoint = null
     interaction = 'place'
@@ -470,8 +495,13 @@ export function createExperience({ canvas, onState, onError }) {
         onStart() {
           if (!running) return
           ;({ scene, camera, renderer } = xr.Threejs.xrScene())
+          arSceneReady = true
           renderer.outputColorSpace = THREE.SRGBColorSpace
           lightScene()
+          if (debugEnabled) {
+            debugLayer = createARDebugLayer(scene)
+            debugLayer.setEnabled(true)
+          }
           void setArt(sessionArt)
           notify({
             message:
@@ -482,6 +512,7 @@ export function createExperience({ canvas, onState, onError }) {
           const reality = processCpuResult?.reality
           if (!reality || !running || !camera) return
           tracking = reality.trackingStatus === 'NORMAL'
+          debugLayer?.setTracking(tracking)
           if (reality.trackingStatus !== lastStatus) {
             lastStatus = reality.trackingStatus
             notify({
@@ -492,13 +523,26 @@ export function createExperience({ canvas, onState, onError }) {
           }
           if (model) model.visible = tracking && !!selectedWall
           const now = performance.now()
-          if (!tracking) return
-          if (now - lastDetection > 650) {
+          if (!tracking) {
+            // Do not leave an old center hit or diagnostic pretending tracking is live.
+            candidateWall = null
+            rayPoint = null
+            diagnostics = null
+            detectionAt = null
+            lastDetection = 0
+          }
+          if (tracking && now - lastDetection > 650) {
             lastDetection = now
+            const report = debugEnabled ? {} : null
+            const startedAt = performance.now()
             const detected = detectVerticalWalls(
               reality.worldPoints || [],
               camera.position,
+              { diagnostics: report },
             )
+            detectionMs = performance.now() - startedAt
+            detectionAt = now
+            diagnostics = report
             const found = tracker.update(detected, now)
             // Preserve explicit boundary edits and the selected wall's stable pose.
             walls = found.map(
@@ -518,7 +562,40 @@ export function createExperience({ canvas, onState, onError }) {
             })
             candidateWall = hit?.wall
             rayPoint = hit?.local
+            if (debugEnabled)
+              debugLayer?.updateWalls(
+                walls,
+                diagnostics?.candidates || [],
+                selectedWall?.id,
+              )
             notify({ pointCount: reality.worldPoints?.length || 0 })
+          }
+          // HUD/point uploads run at 4 Hz; the camera renders their world positions every frame.
+          if (debugEnabled && now - lastDebugUpdate >= 250) {
+            lastDebugUpdate = now
+            const sampledCount =
+              debugLayer?.updatePoints(
+                reality.worldPoints || [],
+                camera.position,
+              ) || 0
+            latestDebug = debugSummary({
+              trackingStatus: reality.trackingStatus,
+              trackingReason: reality.trackingReason || '',
+              rawCount: reality.worldPoints?.length || 0,
+              sampledCount,
+              diagnostics,
+              walls,
+              tracker: tracker.snapshot(),
+              hit: candidateWall,
+              fits:
+                tracking && candidateWall && art
+                  ? !!constrain(candidateWall, rayPoint)
+                  : null,
+              detectionMs,
+              detectionAgeMs: detectionAt === null ? null : now - detectionAt,
+              tracking,
+            })
+            notify()
           }
         },
         onCameraStatusChange({ status }) {
@@ -570,6 +647,22 @@ export function createExperience({ canvas, onState, onError }) {
     setArt,
     startAR,
     stopAR,
+    setDebug(enabled) {
+      debugEnabled = !!enabled
+      lastDebugUpdate = 0
+      if (debugEnabled && mode === 'ar' && arSceneReady && running) {
+        debugLayer ||= createARDebugLayer(scene)
+        debugLayer.setTracking(tracking)
+        lastDetection = 0
+      }
+      debugLayer?.setEnabled(debugEnabled)
+      if (!debugEnabled) {
+        debugLayer?.clear()
+        diagnostics = null
+        latestDebug = debugSummary()
+      }
+      notify()
+    },
     clearPlacement() {
       selectedWall = null
       candidateWall = null
@@ -601,6 +694,14 @@ export function createExperience({ canvas, onState, onError }) {
         selectedWall = null
         candidateWall = null
         rayPoint = null
+        diagnostics = null
+        detectionAt = null
+        lastDetection = 0
+        debugLayer?.clear()
+        latestDebug = debugSummary({
+          trackingStatus: tracking ? 'NORMAL' : 'LIMITED',
+          tracking,
+        })
         if (model) model.visible = false
         updateGuide()
         notify({ message: '別の壁にカメラを向けてください。' })

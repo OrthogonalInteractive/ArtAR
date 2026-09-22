@@ -2258,3 +2258,196 @@ label {
     font-size: 31px;
   }
 }
+
+/* Diagnostic controls stay outside the camera canvas's pointer listeners. */
+.ar-active .stage-top {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ar-top-actions {
+  display: flex;
+  gap: 7px;
+  pointer-events: auto;
+  margin-left: auto;
+}
+.debug-toggle[aria-pressed='true'] {
+  background: #273c4a;
+  color: #a3e9ff;
+  border-color: #58d9ff;
+}
+.ar-debug-panel {
+  position: absolute;
+  z-index: 115;
+  top: calc(max(18px, env(safe-area-inset-top)) + 52px);
+  left: 16px;
+  width: min(370px, calc(100% - 32px));
+  max-height: min(44dvh, 430px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 14px;
+  border: 1px solid #8cabc766;
+  border-radius: 10px;
+  background: #101b27e8;
+  color: #edf7ff;
+  backdrop-filter: blur(10px);
+  font-size: 12px;
+  line-height: 1.65;
+  font-variant-numeric: tabular-nums;
+}
+.debug-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.debug-heading strong {
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+.debug-heading button {
+  margin-left: auto;
+  color: #e2f1ff;
+  font-size: 12px;
+  min-height: 32px;
+  padding: 4px 7px;
+  border: 1px solid #698098;
+  border-radius: 5px;
+}
+.debug-tracking {
+  font-size: 11px;
+  color: #ffbf83;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: #ffffff10;
+}
+.debug-tracking.normal {
+  color: #95f98a;
+}
+.debug-legend {
+  display: flex;
+  gap: 4px 13px;
+  flex-wrap: wrap;
+  margin: 7px 0 11px;
+}
+.debug-points {
+  color: #58d9ff;
+}
+.debug-pending {
+  color: #ffd36b;
+}
+.debug-rejected {
+  color: #ff9999;
+}
+.debug-confirmed {
+  color: #95f98a;
+}
+.debug-selected {
+  color: #c59bff;
+}
+.debug-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 18px;
+  margin: 0;
+}
+.debug-metrics > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.debug-metrics dt {
+  color: #bfcedb;
+}
+.debug-metrics dd {
+  margin: 0;
+  font-weight: 600;
+}
+.debug-message {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #fff;
+}
+.debug-details {
+  border-top: 1px solid #7389a44d;
+  margin-top: 10px;
+  padding-top: 8px;
+}
+.debug-details summary {
+  cursor: pointer;
+  padding: 3px 0;
+  color: #c0d5e9;
+}
+.debug-details p {
+  margin: 10px 0;
+  color: #bed0df;
+}
+.debug-candidates,
+.debug-walls {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+}
+.debug-candidates li {
+  padding: 8px 0;
+  border-bottom: 1px solid #ffffff20;
+}
+.debug-candidates strong,
+.debug-candidates span {
+  display: block;
+}
+.debug-copy-fallback {
+  margin-top: 10px;
+}
+.debug-copy-fallback label {
+  font-size: 12px;
+}
+.debug-copy-fallback textarea {
+  min-height: 130px;
+  width: 100%;
+  background: #fff;
+  color: #172738;
+  font-size: 12px;
+  border-radius: 4px;
+  padding: 8px;
+}
+.ar-active.debug-active .scan-center {
+  inset: auto 16px calc(85px + env(safe-area-inset-bottom));
+  gap: 8px;
+}
+.ar-active.debug-active .scan-reticle {
+  display: none;
+}
+.ar-active.debug-active .scan-center p {
+  max-width: 360px;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+@media (max-width: 370px) {
+  .ar-active .stage-top {
+    left: 12px;
+    right: 12px;
+  }
+  .ar-top-actions {
+    gap: 5px;
+  }
+  .ar-active .stage-chip {
+    font-size: 11px;
+    padding: 7px 8px;
+    gap: 4px;
+  }
+  .ar-debug-panel {
+    top: calc(max(18px, env(safe-area-inset-top)) + 58px);
+  }
+}
+@media (orientation: landscape) and (max-height: 550px) {
+  .ar-debug-panel {
+    width: 330px;
+    max-height: calc(100dvh - 155px);
+  }
+  .ar-active.debug-active .scan-center {
+    left: auto;
+    right: 16px;
+    width: min(270px, 40vw);
+  }
+}

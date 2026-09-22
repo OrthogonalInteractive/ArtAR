@@ -5,6 +5,7 @@ import Studio from './components/Studio.vue'
 import Icon from './components/Icon.vue'
 import Dialog from './components/Dialog.vue'
 import Admin from './components/Admin.vue'
+import ARDebug from './components/ARDebug.vue'
 import { artDimensions, frameOptions } from './data/catalog.js'
 import {
   loadCatalog,
@@ -71,6 +72,9 @@ const shareId = ref(shareCollections.value[0]?.id || ''),
   mobileCollection = ref(false)
 const shareLink = computed(() => collectionUrl(shareId.value, location.href))
 const isAR = computed(() => state.value.mode === 'ar')
+const debugEnabled = ref(
+  new URLSearchParams(location.search).get('debug') === '1',
+)
 let toastTimer, webmcpLifecycle
 const showToast = (message) => {
   toast.value = message
@@ -99,7 +103,12 @@ async function changeFrame(id) {
 }
 async function studioReady() {
   ready.value = true
+  studio.value.setDebug(debugEnabled.value)
   if (active.value) await selectArt(active.value)
+}
+function toggleDebug() {
+  debugEnabled.value = !debugEnabled.value
+  studio.value.setDebug(debugEnabled.value)
 }
 async function openAR() {
   dialog.value = 'ar'
@@ -282,7 +291,12 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <div :class="['app-shell', { 'ar-active': isAR }]">
+  <div
+    :class="[
+      'app-shell',
+      { 'ar-active': isAR, 'debug-active': isAR && debugEnabled },
+    ]"
+  >
     <header class="app-header">
       <a class="brand" :href="'./'" aria-label="ArtAR ホーム"
         ><span class="brand-symbol"><span></span></span>Art<span
@@ -397,10 +411,22 @@ onBeforeUnmount(() => {
                     : '空間を認識中'
                   : 'バーチャルルーム'
               }}</span
-            ><button v-if="isAR" class="stage-chip" @click="stopAR">
-              <Icon name="close" :size="15" />ARを終了</button
-            ><span v-else class="scale-chip">1:1<span>実寸比率</span></span>
+            >
+            <div v-if="isAR" class="ar-top-actions">
+              <button
+                class="stage-chip debug-toggle"
+                :aria-pressed="debugEnabled"
+                @click="toggleDebug"
+              >
+                <Icon name="grid" :size="15" />デバッグ
+              </button>
+              <button class="stage-chip" @click="stopAR">
+                <Icon name="close" :size="15" />終了
+              </button>
+            </div>
+            <span v-else class="scale-chip">1:1<span>実寸比率</span></span>
           </div>
+          <ARDebug v-if="isAR && debugEnabled" :data="state.debug" />
           <div v-if="isAR && !state.placed" class="scan-center">
             <span class="scan-reticle"></span>
             <p>

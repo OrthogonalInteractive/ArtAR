@@ -157,23 +157,62 @@ export function fitPlacement(
   return { ...best, clamped: true }
 }
 
-/** RANSAC uses three independent points so horizontal floors cannot become walls. */
+export const WALL_DETECTION_LIMITS = Object.freeze({
+  minPoints: 20,
+  minWidth: 0.45,
+  minHeight: 0.4,
+  maxPoints: 800,
+  maxDistance: 7,
+  confirmations: 3,
+})
+
+// The overlay and detector deliberately use the same finite, nearby sample.
+export function sampleWallPoints(rawPoints, cameraPosition) {
+  const points = []
+  for (const raw of rawPoints) {
+    const p = raw?.position || raw
+    if (!p || !Number.isFinite(p.x + p.y + p.z)) continue
+    const point = new Vector3().copy(p)
+    if (point.distanceTo(cameraPosition) >= WALL_DETECTION_LIMITS.maxDistance)
+      continue
+    points.push(point)
+    if (points.length === WALL_DETECTION_LIMITS.maxPoints) break
+  }
+  return points
+}
+
+/** RANSAC uses three independent points so horizontal floors cannot become walls.
+ * Optional diagnostics describe this exact run, without changing its samples.
+ */
 export function detectVerticalWalls(
   rawPoints,
   cameraPosition,
-  { random = Math.random, iterations = 110, tolerance = 0.035 } = {},
+  {
+    random = Math.random,
+    iterations = 110,
+    tolerance = 0.035,
+    diagnostics,
+  } = {},
 ) {
-  let remaining = rawPoints
-    .map((p) => p.position || p)
-    .filter(
-      (p) =>
-        Number.isFinite(p.x + p.y + p.z) &&
-        new Vector3().copy(p).distanceTo(cameraPosition) < 7,
-    )
-    .slice(0, 800)
-    .map((p) => new Vector3().copy(p))
+  let remaining = sampleWallPoints(rawPoints, cameraPosition)
+  if (diagnostics)
+    Object.assign(diagnostics, {
+      rawPoints: rawPoints.length,
+      sampledPoints: remaining.length,
+      verticalSamples: 0,
+      bestInliers: 0,
+      candidates: [],
+      status:
+        remaining.length < WALL_DETECTION_LIMITS.minPoints
+          ? 'few-points'
+          : 'no-vertical-plane',
+    })
   const walls = []
-  for (let pass = 0; pass < 3 && remaining.length >= 20; pass++) {
+  for (
+    let pass = 0;
+    pass < 3 && remaining.length >= WALL_DETECTION_LIMITS.minPoints;
+    pass++
+  ) {
     let best = []
     for (let i = 0; i < iterations; i++) {
       const a = remaining[Math.floor(random() * remaining.length)]
@@ -185,6 +224,7 @@ export function detectVerticalWalls(
       if (n.length() < 0.015) continue
       n.normalize()
       if (Math.abs(n.y) > 0.12) continue
+      if (diagnostics) diagnostics.verticalSamples++
       n.y = 0
       n.normalize()
       const inliers = remaining.filter(
@@ -192,7 +232,9 @@ export function detectVerticalWalls(
       )
       if (inliers.length > best.length) best = inliers
     }
-    if (best.length < 20) break
+    if (diagnostics)
+      diagnostics.bestInliers = Math.max(diagnostics.bestInliers, best.length)
+    if (best.length < WALL_DETECTION_LIMITS.minPoints) break
     const mean = best
       .reduce((s, p) => s.add(p), new Vector3())
       .multiplyScalar(1 / best.length)
@@ -223,18 +265,45 @@ export function detectVerticalWalls(
         best.length,
     )
     // Reject thin lines and broad noisy point clouds.
-    if (width >= 0.45 && height >= 0.4 && residual < tolerance * 0.8) {
-      walls.push({
-        origin: mean,
-        normal: n,
-        polygon: convexHull(projected),
-        pointCount: best.length,
-        residual,
-        source: 'scan',
-      })
+    const candidate = {
+      origin: mean,
+      normal: n,
+      polygon: convexHull(projected),
+      pointCount: best.length,
+      residual,
+      source: 'scan',
     }
+    const accepted =
+      width >= WALL_DETECTION_LIMITS.minWidth &&
+      height >= WALL_DETECTION_LIMITS.minHeight &&
+      residual < tolerance * 0.8
+    if (accepted) walls.push(candidate)
+    if (diagnostics)
+      diagnostics.candidates.push({
+        ...candidate,
+        width,
+        height,
+        accepted,
+        reasons: [
+          ...(width < WALL_DETECTION_LIMITS.minWidth ? ['narrow'] : []),
+          ...(height < WALL_DETECTION_LIMITS.minHeight ? ['short'] : []),
+          ...(residual >= tolerance * 0.8 ? ['noisy'] : []),
+        ],
+      })
     const used = new Set(best)
     remaining = remaining.filter((p) => !used.has(p))
+  }
+  if (
+    diagnostics &&
+    diagnostics.sampledPoints >= WALL_DETECTION_LIMITS.minPoints
+  ) {
+    diagnostics.status = walls.length
+      ? 'detected'
+      : diagnostics.candidates.length
+        ? 'rejected'
+        : diagnostics.verticalSamples
+          ? 'few-inliers'
+          : 'no-vertical-plane'
   }
   return walls
 }
@@ -267,7 +336,17 @@ export function createWallTracker() {
         entry.updated = now
       }
       entries = entries.filter((e) => e.locked || now - e.updated < 2500)
-      return entries.filter((e) => e.seen >= 3).map((e) => e.wall)
+      return entries
+        .filter((e) => e.seen >= WALL_DETECTION_LIMITS.confirmations)
+        .map((e) => e.wall)
+    },
+    snapshot() {
+      return entries.map((e) => ({
+        id: e.wall.id,
+        confirmations: e.seen,
+        locked: e.locked,
+        confirmed: e.seen >= WALL_DETECTION_LIMITS.confirmations,
+      }))
     },
     lock(id) {
       const e = entries.find((e) => e.wall.id === id)

@@ -25,6 +25,7 @@ defineExpose({
   setArt: (a) => engine?.setArt(a),
   startAR: () => engine?.startAR(host.value),
   stopAR: () => engine?.stopAR(),
+  setDebug: (value) => engine?.setDebug(value),
   place: () => engine?.place(),
   clearPlacement: () => engine?.clearPlacement(),
   nudge: (x, y) => engine?.nudge(x, y),
