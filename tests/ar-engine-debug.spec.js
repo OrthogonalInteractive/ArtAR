@@ -77,7 +77,7 @@ beforeEach(async () => {
   })
   engine = createExperience({
     canvas,
-    onState: (s) => updates.push(s),
+    onState: (s) => updates.push({ ...updates.at(-1), ...s }),
     onError: (message) => {
       throw new Error(message)
     },
@@ -121,6 +121,25 @@ describe('XR8 debug pipeline lifecycle', () => {
     engine.setDebug(false)
     expect(layer.visible).toBe(false)
     expect(updates.at(-1).debug).toBeNull()
+  })
+  it('shows confirmed XR8 walls even when diagnostics are disabled', () => {
+    const points = []
+    for (let x = -1; x <= 1; x += 0.1)
+      for (let y = 0.2; y <= 2.2; y += 0.1)
+        points.push({ position: { x, y, z: 0 } })
+    for (let i = 0; i < 3; i++) {
+      now += 700
+      frame('NORMAL', points)
+    }
+    const surfaces = xrScene.scene.getObjectByName('artar-wall-surfaces')
+    expect(surfaces.visible).toBe(true)
+    expect(surfaces.children).toHaveLength(1)
+    expect(xrScene.scene.getObjectByName('artar-debug')).toBeUndefined()
+    now += 700
+    frame('LIMITED', [])
+    expect(surfaces.visible).toBe(false)
+    engine.stopAR()
+    expect(xrScene.scene.getObjectByName('artar-wall-surfaces')).toBeUndefined()
   })
   it('hides stale geometry during tracking loss and removes it on camera shutdown', () => {
     engine.setDebug(true)

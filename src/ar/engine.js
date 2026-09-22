@@ -2,7 +2,6 @@ import * as THREE from 'three'
 import { createArtwork, disposeObject } from './artwork.js'
 import { createRoom } from './room.js'
 import {
-  makeWall,
   fitPlacement,
   localPoint,
   worldPoint,
@@ -13,6 +12,7 @@ import { artDimensions } from '../data/catalog.js'
 import { createARDebugLayer, debugSummary } from './debug.js'
 import { arBackend, prepareWebXR, WEBXR_UNAVAILABLE } from './platform.js'
 import { createWebXRSession } from './webxr.js'
+import { createWallFeedback, createDragOutline } from './wall-feedback.js'
 
 // Matches the engine distribution used by ../portfolio. No API key required.
 export const ENGINE_URL =
@@ -85,7 +85,6 @@ export function createExperience({ canvas, onState, onError }) {
   let mode = 'preview',
     disposed = false,
     generation = 0,
-    unitsPerMeter = 1,
     guide,
     guideOn = true,
     running = false
@@ -93,8 +92,6 @@ export function createExperience({ canvas, onState, onError }) {
     lastDetection = 0,
     candidateWall,
     rayPoint,
-    calibration = [],
-    interaction = 'place',
     lastStatus = ''
   let raf,
     arCanvas,
@@ -108,6 +105,8 @@ export function createExperience({ canvas, onState, onError }) {
   let debugEnabled = false,
     arSceneReady = false,
     debugLayer = null,
+    wallFeedback = null,
+    lastHintUpdate = 0,
     diagnostics = null,
     lastDebugUpdate = 0,
     detectionMs = 0,
@@ -124,15 +123,35 @@ export function createExperience({ canvas, onState, onError }) {
       wallCount: walls.length,
       position: { ...placement },
       tracking: mode === 'preview' || tracking,
-      calibrated: unitsPerMeter !== 1,
       wallSource: selectedWall?.source,
-      interaction,
+      dragging: dragPointer !== null,
+      artHint: artworkHint(),
       canPlace: !!candidateWall,
       debugEnabled,
       debug: debugEnabled ? latestDebug : null,
       ...extra,
     })
-  const dimensions = () => artDimensions(art, unitsPerMeter)
+  const dimensions = () => artDimensions(art)
+  function artworkHint() {
+    if (mode !== 'ar' || !tracking || !selectedWall || !art) return null
+    const size = dimensions()
+    const p = worldPoint(
+      selectedWall,
+      {
+        x: placement.x,
+        y: placement.y - size.height / 2,
+      },
+      size.depth + 0.015,
+    ).project(camera)
+    if (p.z < -1 || p.z > 1 || Math.abs(p.x) > 0.85 || p.y < -0.55 || p.y > 0.9)
+      return null
+    const y = (1 - p.y) * 50
+    // Leave the bottom controls clear, including on short portrait screens.
+    const reserved = window.innerWidth > window.innerHeight ? 76 : 160
+    if ((y / 100) * window.innerHeight + 58 > window.innerHeight - reserved)
+      return null
+    return { x: (p.x + 1) * 50, y }
+  }
   function lightScene() {
     scene.add(new THREE.HemisphereLight(0xffffff, 0x8d897f, 2.5))
     const light = new THREE.DirectionalLight(0xfff9ef, 3.2)
@@ -151,6 +170,17 @@ export function createExperience({ canvas, onState, onError }) {
       disposeObject(guide)
       guide = null
     }
+    if (mode === 'ar') {
+      if (!arSceneReady) return
+      wallFeedback ||= createWallFeedback(scene)
+      wallFeedback.setTracking(tracking)
+      wallFeedback.update(walls, {
+        selectedId: selectedWall?.id,
+        candidateId: candidateWall?.id,
+        dragging: dragPointer !== null,
+      })
+      return
+    }
     if (!selectedWall || !guideOn) return
     const vertices = selectedWall.polygon.map((p) =>
       worldPoint(selectedWall, p, 0.006),
@@ -159,7 +189,7 @@ export function createExperience({ canvas, onState, onError }) {
     guide = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(vertices),
       new THREE.LineDashedMaterial({
-        color: mode === 'ar' ? 0xd4f279 : 0x778177,
+        color: 0x778177,
         dashSize: 0.06,
         gapSize: 0.035,
         transparent: true,
@@ -171,11 +201,8 @@ export function createExperience({ canvas, onState, onError }) {
   }
   function applyPosition() {
     if (!model || !selectedWall) return
-    model.position.copy(
-      worldPoint(selectedWall, placement, 0.008 * unitsPerMeter),
-    )
+    model.position.copy(worldPoint(selectedWall, placement, 0.008))
     model.quaternion.copy(selectedWall.rotation)
-    model.scale.setScalar(unitsPerMeter)
     model.visible = mode === 'preview' || tracking
   }
   function constrain(wall, point) {
@@ -187,7 +214,7 @@ export function createExperience({ canvas, onState, onError }) {
       size.height,
       walls,
       size.depth,
-      0.02 * unitsPerMeter,
+      0.02,
     )
   }
   function placeOn(wall, point) {
@@ -201,7 +228,6 @@ export function createExperience({ canvas, onState, onError }) {
     }
     selectedWall = wall
     placement = { x: fit.x, y: fit.y }
-    interaction = 'place'
     if (mode === 'ar') tracker.lock(wall.id)
     if (debugEnabled)
       debugLayer?.updateWalls(
@@ -227,11 +253,8 @@ export function createExperience({ canvas, onState, onError }) {
     mode = 'preview'
     backend = null
     xrCapabilities = null
-    unitsPerMeter = 1
     tracking = true
     selectedWall = null
-    calibration = []
-    interaction = 'place'
     scene = new THREE.Scene()
     camera = new THREE.PerspectiveCamera(42, 1, 0.01, 50)
     camera.position.set(2.1, 2.2, 5.3)
@@ -286,6 +309,7 @@ export function createExperience({ canvas, onState, onError }) {
       }
       if (model) disposeObject(model)
       model = nextModel
+      if (mode === 'ar') createDragOutline(model, dimensions())
       scene.add(model)
       if (nextPosition) placement = { x: nextPosition.x, y: nextPosition.y }
       model.visible = !!selectedWall
@@ -331,59 +355,15 @@ export function createExperience({ canvas, onState, onError }) {
     return best
   }
   function pointerDown(event) {
-    if (event.button !== 0 || (mode === 'ar' && !tracking) || !art) return
+    if (
+      event.button !== 0 ||
+      dragPointer !== null ||
+      (mode === 'ar' && !tracking) ||
+      !art
+    )
+      return
     const hit = pick(event)
     if (!hit) return
-    if (interaction === 'calibrate') {
-      if (selectedWall && hit.wall.id === selectedWall.id) {
-        calibration.push(hit.world)
-        if (calibration.length === 2) interaction = 'measure'
-        notify({
-          calibrationPoints: calibration.length,
-          message:
-            calibration.length === 1
-              ? '同じ壁のもう一方の端をタップしてください。'
-              : '2点間の実際の長さを入力してください。',
-        })
-      }
-      return
-    }
-    if (interaction === 'measure') return
-    if (interaction === 'bounds') {
-      if (hit.wall.id !== selectedWall?.id) return
-      calibration.push(hit.local)
-      if (calibration.length === 2) {
-        const [a, b] = calibration
-        if (Math.abs(a.x - b.x) < 0.2 || Math.abs(a.y - b.y) < 0.2) {
-          calibration = []
-          notify({ message: '対角の2点を、20cm以上離して指定してください。' })
-          return
-        }
-        const next = makeWall({
-          ...selectedWall,
-          polygon: [
-            { x: a.x, y: a.y },
-            { x: b.x, y: a.y },
-            { x: b.x, y: b.y },
-            { x: a.x, y: b.y },
-          ],
-          source: 'manual',
-        })
-        if (!constrain(next, placement)) {
-          calibration = []
-          notify({
-            message:
-              'その範囲には作品が収まりません。広い範囲を指定してください。',
-          })
-          return
-        }
-        walls = walls.map((w) => (w.id === next.id ? next : w))
-        placeOn(next, placement)
-        calibration = []
-      } else
-        notify({ message: '飾れる範囲の、反対側の角をタップしてください。' })
-      return
-    }
     dragOffset = null
     if (model && selectedWall && hit.wall.id === selectedWall.id) {
       const hits = raycaster.intersectObject(model, true)
@@ -395,16 +375,15 @@ export function createExperience({ canvas, onState, onError }) {
     }
     if (placeOn(hit.wall, dragOffset ? placement : hit.local)) {
       dragPointer = event.pointerId
-      ;(mode === 'ar' ? arCanvas : canvas).setPointerCapture(event.pointerId)
+      const target = mode === 'ar' ? arCanvas : canvas
+      target.setPointerCapture(event.pointerId)
+      target.classList.add('is-dragging')
+      updateGuide()
+      notify()
     }
   }
   function pointerMove(event) {
-    if (
-      dragPointer !== event.pointerId ||
-      interaction !== 'place' ||
-      (mode === 'ar' && !tracking)
-    )
-      return
+    if (dragPointer !== event.pointerId || (mode === 'ar' && !tracking)) return
     const hit = pick(event)
     if (!hit) return
     const offset = hit.wall.id === selectedWall?.id ? dragOffset : null
@@ -413,25 +392,41 @@ export function createExperience({ canvas, onState, onError }) {
       y: hit.local.y + (offset?.y || 0),
     })
   }
-  const pointerUp = () => {
+  function pointerUp(event) {
+    if (event && event.pointerId !== dragPointer) return
+    const wasDragging = dragPointer !== null
+    const target = mode === 'ar' ? arCanvas : canvas
+    const pointerId = dragPointer
     dragPointer = null
     dragOffset = null
+    target?.classList.remove('is-dragging')
+    if (target?.hasPointerCapture?.(pointerId))
+      target.releasePointerCapture(pointerId)
+    if (wasDragging) {
+      updateGuide()
+      notify()
+    }
   }
   function bind(el) {
     el.addEventListener('pointerdown', pointerDown)
     el.addEventListener('pointermove', pointerMove)
     el.addEventListener('pointerup', pointerUp)
     el.addEventListener('pointercancel', pointerUp)
+    el.addEventListener('lostpointercapture', pointerUp)
   }
   function unbind(el) {
     el.removeEventListener('pointerdown', pointerDown)
     el.removeEventListener('pointermove', pointerMove)
     el.removeEventListener('pointerup', pointerUp)
     el.removeEventListener('pointercancel', pointerUp)
+    el.removeEventListener('lostpointercapture', pointerUp)
   }
   function clearScene() {
+    pointerUp()
     generation++
     arSceneReady = false
+    wallFeedback?.dispose()
+    wallFeedback = null
     debugLayer?.dispose()
     debugLayer = null
     if (scene) disposeObject(scene)
@@ -471,15 +466,9 @@ export function createExperience({ canvas, onState, onError }) {
     if (!reality || !running || !camera) return
     xrCapabilities = reality.webxr || null
     tracking = reality.trackingStatus === 'NORMAL'
+    if (!tracking) pointerUp()
+    wallFeedback?.setTracking(tracking)
     debugLayer?.setTracking(tracking)
-    if (reality.trackingStatus !== lastStatus) {
-      lastStatus = reality.trackingStatus
-      notify({
-        message: tracking
-          ? ''
-          : '空間を再認識しています。端末をゆっくり動かしてください。',
-      })
-    }
     if (model) model.visible = tracking && !!selectedWall
     const now = performance.now()
     if (!tracking) {
@@ -489,6 +478,14 @@ export function createExperience({ canvas, onState, onError }) {
       diagnostics = null
       detectionAt = null
       lastDetection = 0
+    }
+    if (reality.trackingStatus !== lastStatus) {
+      lastStatus = reality.trackingStatus
+      notify({
+        message: tracking
+          ? ''
+          : '空間を再認識しています。端末をゆっくり動かしてください。',
+      })
     }
     if (tracking && now - lastDetection > 650) {
       lastDetection = now
@@ -522,14 +519,11 @@ export function createExperience({ canvas, onState, onError }) {
       detectionAt = now
       diagnostics = report
       const found = tracker.update(detected, now)
-      // Preserve explicit boundary edits and the selected wall's stable pose.
+      // Preserve the selected wall's stable pose while scanning other surfaces.
       walls = found.map(
         (w) =>
-          walls.find(
-            (old) =>
-              old.id === w.id &&
-              (old.id === selectedWall?.id || old.source === 'manual'),
-          ) || w,
+          walls.find((old) => old.id === w.id && old.id === selectedWall?.id) ||
+          w,
       )
       if (selectedWall && !walls.some((w) => w.id === selectedWall.id))
         walls.push(selectedWall)
@@ -540,6 +534,7 @@ export function createExperience({ canvas, onState, onError }) {
       })
       candidateWall = hit?.wall
       rayPoint = hit?.local
+      updateGuide()
       if (debugEnabled)
         debugLayer?.updateWalls(
           walls,
@@ -547,6 +542,10 @@ export function createExperience({ canvas, onState, onError }) {
           selectedWall?.id,
         )
       notify({ pointCount: reality.worldPoints?.length || 0 })
+    }
+    if (now - lastHintUpdate >= 80) {
+      lastHintUpdate = now
+      onState({ artHint: artworkHint() })
     }
     // HUD/point uploads run at 4 Hz; the camera renders their world positions every frame.
     if (debugEnabled && now - lastDebugUpdate >= 250) {
@@ -594,7 +593,6 @@ export function createExperience({ canvas, onState, onError }) {
     running = true
     walls = []
     tracker.reset()
-    unitsPerMeter = 1
     lastDetection = 0
     lastStatus = ''
     diagnostics = null
@@ -603,11 +601,13 @@ export function createExperience({ canvas, onState, onError }) {
     latestDebug = debugSummary()
     candidateWall = null
     rayPoint = null
-    interaction = 'place'
-    calibration = []
     dragPointer = null
     arCanvas = document.createElement('canvas')
     arCanvas.className = 'ar-canvas'
+    arCanvas.setAttribute(
+      'aria-label',
+      '水色の壁をタップして配置。作品をドラッグして移動できます。',
+    )
     host.appendChild(arCanvas)
     bind(arCanvas)
     let session
@@ -643,6 +643,7 @@ export function createExperience({ canvas, onState, onError }) {
         onError,
         onReset() {
           // A reference-space reset invalidates old room coordinates.
+          pointerUp()
           tracker.reset()
           diagnostics = null
           detectionAt = null
@@ -653,9 +654,6 @@ export function createExperience({ canvas, onState, onError }) {
           selectedWall = null
           candidateWall = null
           rayPoint = null
-          calibration = []
-          interaction = 'place'
-          dragPointer = null
           if (model) model.visible = false
           debugLayer?.clear()
           updateGuide()
@@ -697,7 +695,6 @@ export function createExperience({ canvas, onState, onError }) {
     tracking = false
     running = true
     walls = []
-    unitsPerMeter = 1
     lastDetection = 0
     lastStatus = ''
     diagnostics = null
@@ -707,10 +704,12 @@ export function createExperience({ canvas, onState, onError }) {
     latestDebug = debugSummary()
     candidateWall = null
     rayPoint = null
-    interaction = 'place'
-    calibration = []
     arCanvas = document.createElement('canvas')
     arCanvas.className = 'ar-canvas'
+    arCanvas.setAttribute(
+      'aria-label',
+      '水色の壁をタップして配置。作品をドラッグして移動できます。',
+    )
     host.appendChild(arCanvas)
     bind(arCanvas)
     resizeAR()
@@ -812,10 +811,10 @@ export function createExperience({ canvas, onState, onError }) {
       notify()
     },
     clearPlacement() {
+      pointerUp()
       selectedWall = null
       candidateWall = null
       rayPoint = null
-      interaction = 'place'
       if (model) model.visible = false
       updateGuide()
       notify()
@@ -831,11 +830,12 @@ export function createExperience({ canvas, onState, onError }) {
     nudge(dx, dy) {
       if (selectedWall && (mode === 'preview' || tracking))
         placeOn(selectedWall, {
-          x: placement.x + dx * unitsPerMeter,
-          y: placement.y + dy * unitsPerMeter,
+          x: placement.x + dx,
+          y: placement.y + dy,
         })
     },
     reset() {
+      pointerUp()
       if (mode === 'ar') {
         webxr?.reset()
         tracker.reset()
@@ -873,61 +873,6 @@ export function createExperience({ canvas, onState, onError }) {
         front ? 5.5 : 5.3,
       )
       camera.lookAt(front ? 0 : -0.3, 1.4, 0.1)
-    },
-    beginCalibration() {
-      if (!selectedWall) return
-      calibration = []
-      interaction = 'calibrate'
-      notify({
-        calibrationPoints: 0,
-        message: '同じ壁にある、長さがわかる線の両端をタップしてください。',
-      })
-    },
-    calibrate(cm) {
-      if (
-        calibration.length !== 2 ||
-        interaction !== 'measure' ||
-        !Number.isFinite(cm) ||
-        cm < 10 ||
-        cm > 500
-      )
-        throw new Error('10〜500cmの実測値を入力してください。')
-      const measured = calibration[0].distanceTo(calibration[1])
-      if (measured < 0.05)
-        throw new Error('2点が近すぎます。もう一度指定してください。')
-      const next = measured / (cm / 100)
-      if (next < 0.1 || next > 10)
-        throw new Error('補正値が範囲外です。2点を指定し直してください。')
-      const previous = unitsPerMeter
-      unitsPerMeter = next
-      const fit = constrain(selectedWall, placement)
-      if (!fit) {
-        unitsPerMeter = previous
-        throw new Error(
-          '補正後の作品が壁に収まりません。広い範囲を認識してから補正してください。',
-        )
-      }
-      placement = { x: fit.x, y: fit.y }
-      interaction = 'place'
-      calibration = []
-      applyPosition()
-      notify({
-        message: '実測した長さで表示サイズを補正しました。',
-        calibrationPoints: 0,
-      })
-    },
-    beginBounds() {
-      if (!selectedWall) return
-      calibration = []
-      interaction = 'bounds'
-      notify({
-        message: '飾れる範囲の左下と右上を、壁の中でタップしてください。',
-      })
-    },
-    cancelInteraction() {
-      interaction = 'place'
-      calibration = []
-      notify({ calibrationPoints: 0, message: '' })
     },
     snapshot() {
       renderer.render(scene, camera)

@@ -94,6 +94,41 @@ describe('gallery flows', () => {
     expect(setDebug).toHaveBeenLastCalledWith(false)
     expect(w.find('.ar-debug-panel').exists()).toBe(false)
   })
+  it('explains dragging and removes the manual calibration and boundary flows', async () => {
+    const w = create()
+    await flushPromises()
+    const studio = w.findComponent(Studio)
+    studio.vm.$emit('state', {
+      mode: 'ar',
+      placed: true,
+      tracking: true,
+      artHint: { x: 50, y: 60 },
+    })
+    await flushPromises()
+    expect(w.find('.art-drag-hint').text()).toContain('つかんで移動')
+    expect(w.find('.ar-move-instruction').text()).toContain(
+      '作品をドラッグして移動',
+    )
+    expect(
+      w
+        .find('.ar-mobile-bar')
+        .findAll('button')
+        .map((b) => b.text()),
+    ).toEqual(['作品を切り替え', '別の壁に飾る'])
+    expect(w.text()).not.toMatch(/実寸補正|実測してサイズ|飾れる範囲を指定/)
+    studio.vm.$emit('state', { dragging: true })
+    await flushPromises()
+    expect(w.find('.art-drag-hint').text()).toContain('移動中')
+    expect(w.find('.ar-move-instruction').text()).toContain('指を離して配置')
+    studio.vm.$emit('state', {
+      tracking: false,
+      dragging: false,
+      artHint: null,
+    })
+    await flushPromises()
+    expect(w.find('.art-drag-hint').exists()).toBe(false)
+    expect(w.find('.ar-move-instruction').text()).toContain('壁を再認識')
+  })
   it('selects a replacement with its registered size and updates the details', async () => {
     const w = create()
     await flushPromises()

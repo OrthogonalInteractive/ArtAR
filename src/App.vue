@@ -48,7 +48,8 @@ const studio = ref(),
     placed: true,
     wallCount: 2,
     tracking: true,
-    interaction: 'place',
+    dragging: false,
+    artHint: null,
   })
 const dialog = ref(null),
   toast = ref(props.loadError || initial.error || ''),
@@ -68,7 +69,6 @@ const shareCollections = computed(() =>
 const shareId = ref(shareCollections.value[0]?.id || ''),
   qr = ref(''),
   copied = ref(false),
-  calibrationCm = ref(100),
   mobileCollection = ref(false)
 const shareLink = computed(() => collectionUrl(shareId.value, location.href))
 const isAR = computed(() => state.value.mode === 'ar')
@@ -211,13 +211,6 @@ async function save(data) {
     showToast(e.message)
   }
 }
-function calibrate() {
-  try {
-    studio.value.calibrate(Number(calibrationCm.value))
-  } catch (e) {
-    showToast(e.message)
-  }
-}
 const fmt = (n) => Number(n.toFixed(1))
 const keyboard = (e) => {
   if (
@@ -305,6 +298,7 @@ onBeforeUnmount(() => {
         'ar-active': isAR,
         'webxr-active': isAR && state.backend === 'webxr',
         'debug-active': isAR && debugEnabled,
+        'dragging-art': isAR && state.dragging,
       },
     ]"
   >
@@ -414,11 +408,15 @@ onBeforeUnmount(() => {
             @ready="studioReady"
           />
           <div class="stage-top">
-            <span class="stage-chip"
+            <span
+              class="stage-chip"
+              :class="{
+                'wall-legend': isAR && state.wallCount > 0 && state.tracking,
+              }"
               ><Icon :name="isAR ? 'wall' : 'grid'" :size="15" />{{
                 isAR
                   ? state.tracking
-                    ? `${state.wallCount}面の壁を認識`
+                    ? `${state.wallCount}面を認識 · 水色の面`
                     : '空間を認識中'
                   : 'バーチャルルーム'
               }}</span
@@ -443,7 +441,7 @@ onBeforeUnmount(() => {
             <p>
               {{
                 state.canPlace
-                  ? '壁を検出しました'
+                  ? '水色の壁に飾れます'
                   : state.backend === 'webxr'
                     ? '壁を上下・左右にゆっくり映してください'
                     : '壁の模様や角にカメラを向けてください'
@@ -486,35 +484,49 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <div
-            v-if="isAR && state.interaction !== 'place'"
-            class="ar-instruction"
+            v-if="
+              isAR &&
+              state.placed &&
+              state.tracking &&
+              state.artHint &&
+              !mobileCollection
+            "
+            class="art-drag-hint"
+            :class="{ dragging: state.dragging }"
+            :style="{ left: `${state.artHint.x}%`, top: `${state.artHint.y}%` }"
           >
-            <p>
-              {{
-                state.interaction === 'bounds'
-                  ? '壁の中で、飾れる範囲の対角2点を指定'
-                  : state.interaction === 'measure'
-                    ? '2点間の実際の長さ'
-                    : '長さがわかる線の両端をタップ'
-              }}
-              <span v-if="state.interaction === 'calibrate'"
-                >{{ state.calibrationPoints || 0 }} / 2</span
-              >
-            </p>
-            <div v-if="state.interaction === 'measure'" class="button-row">
-              <input
-                v-model.number="calibrationCm"
-                type="number"
-                min="10"
-                max="500"
-                aria-label="実測した長さ（cm）"
-              />cm<button class="button primary small" @click="calibrate">
-                補正
-              </button>
+            <Icon name="move" :size="17" />{{
+              state.dragging ? '移動中' : 'つかんで移動'
+            }}
+          </div>
+          <div
+            v-if="isAR && !mobileCollection"
+            class="ar-move-instruction"
+            role="status"
+          >
+            <Icon :name="state.placed ? 'move' : 'wall'" :size="20" />
+            <div>
+              <strong>{{
+                !state.tracking
+                  ? '壁を再認識しています'
+                  : state.dragging
+                    ? '移動中 · 指を離して配置'
+                    : state.placed
+                      ? '作品をドラッグして移動'
+                      : state.wallCount
+                        ? '水色の壁をタップして配置'
+                        : '壁をゆっくり映してください'
+              }}</strong>
+              <span>{{
+                !state.tracking
+                  ? '端末をゆっくり動かしてください'
+                  : state.dragging
+                    ? '水色の面に沿って動かせます'
+                    : state.placed
+                      ? '作品に触れたまま、上下・左右へ'
+                      : '認識した壁が水色になります'
+              }}</span>
             </div>
-            <button class="text-button" @click="studio.cancelInteraction()">
-              キャンセル
-            </button>
           </div>
         </div>
         <div class="preview-bottom">
@@ -569,7 +581,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="dimension-card">
           <div class="dimension-heading">
-            <Icon name="ruler" :size="17" /><span>実寸サイズ</span
+            <Icon name="ruler" :size="17" /><span>作品サイズ</span
             ><span class="badge">cm</span>
           </div>
           <div class="dimension-values">
@@ -666,40 +678,18 @@ onBeforeUnmount(() => {
               <p>壁の向きに合わせて<br />角度を自動調整</p>
             </div>
           </div>
-          <button
-            v-if="isAR"
-            class="text-button"
-            :disabled="!state.placed || !state.tracking"
-            @click="studio.beginBounds()"
-          >
-            飾れる範囲を指定<Icon name="chevron" :size="14" />
-          </button>
         </section>
         <div class="scale-note">
           <Icon name="lock" :size="16" />
           <div>
-            <strong>{{
-              isAR
-                ? state.calibrated
-                  ? '実測で補正済み'
-                  : '実寸の推定表示'
-                : '実寸比率をキープ'
-            }}</strong>
+            <strong>登録した寸法で表示</strong>
             <p>
               {{
                 isAR
-                  ? '認識の精度や環境により誤差があります。長さを実測すると補正できます。'
+                  ? '端末や環境によって、表示サイズに誤差が生じます。'
                   : '作品を切り替えても、登録した寸法で表示します。'
               }}
             </p>
-            <button
-              v-if="isAR"
-              class="text-button"
-              :disabled="!state.placed || !state.tracking"
-              @click="studio.beginCalibration()"
-            >
-              実測してサイズを補正
-            </button>
           </div>
         </div>
         <button
@@ -730,21 +720,10 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="isAR" class="ar-mobile-bar">
       <button class="button secondary" @click="mobileCollection = true">
-        <Icon name="grid" :size="17" />作品</button
-      ><button
-        class="button secondary"
-        :disabled="!state.placed || !state.tracking"
-        @click="studio.beginBounds()"
-      >
-        壁の範囲</button
-      ><button
-        class="button secondary"
-        :disabled="!state.placed || !state.tracking"
-        @click="studio.beginCalibration()"
-      >
-        実寸補正</button
-      ><button class="button secondary" @click="studio.reset()">
-        <Icon name="reset" :size="17" />
+        <Icon name="grid" :size="17" />作品を切り替え
+      </button>
+      <button class="button secondary" @click="studio.reset()">
+        <Icon name="reset" :size="17" />別の壁に飾る
       </button>
     </div>
     <Admin
@@ -780,14 +759,14 @@ onBeforeUnmount(() => {
           <div>
             <strong>飾って、動かして、比べる</strong>
             <p>
-              壁をタップして配置。額縁は壁に平行に揃います。作品もその場で切り替えられます。
+              水色の壁をタップして配置し、作品をドラッグして移動。額縁は壁の向きに揃い、作品もその場で切り替えられます。
             </p>
           </div>
         </li>
       </ol>
       <p class="fine-print">
         iPhone /
-        iPadのSafari、AndroidのChromeを想定。PCではルームプレビューをご利用ください。寸法は推定値です。精度が必要な場合は実測補正を行ってください。
+        iPadのSafari、AndroidのChromeを想定。PCではルームプレビューをご利用ください。登録寸法で表示しますが、端末・環境によって誤差があります。
       </p>
       <p v-if="arError" class="error-message" role="alert">{{ arError }}</p>
       <button
@@ -872,10 +851,10 @@ onBeforeUnmount(() => {
         </p>
         <h3>壁と実寸の精度</h3>
         <p>
-          ガイドは認識した点の範囲で、実際の壁の端とは限りません。「壁の範囲」で使える部分を指定してください。隣接する認識済みの壁にも配慮します。窓・家具などの障害物は自動検出しません。
+          水色は認識できた面で、実際の壁の端とは限りません。ドラッグ中は色が濃くなります。隣接する認識済みの壁にも配慮しますが、窓・家具などの障害物は自動検出しません。
         </p>
         <p>
-          「実寸補正」では同じ壁上の2点をタップし、メジャーで測った距離を入力します。認識が途切れた場合は作品を隠し、追跡の復帰を待ちます。
+          作品は登録寸法と端末の距離推定で表示します。表示サイズの精度は端末や環境によって変わります。認識が途切れた場合は作品と壁の色を隠し、追跡の復帰を待ちます。
         </p>
         <h3>作品管理と配布</h3>
         <p>

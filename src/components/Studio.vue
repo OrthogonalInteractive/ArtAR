@@ -33,10 +33,6 @@ defineExpose({
   guides: (v) => engine?.guides(v),
   tone: (c) => engine?.tone(c),
   view: (v) => engine?.view(v),
-  beginCalibration: () => engine?.beginCalibration(),
-  calibrate: (n) => engine?.calibrate(n),
-  beginBounds: () => engine?.beginBounds(),
-  cancelInteraction: () => engine?.cancelInteraction(),
   snapshot: () => engine?.snapshot(),
 })
 </script>

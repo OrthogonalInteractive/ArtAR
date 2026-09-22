@@ -1,12 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { Matrix4, PerspectiveCamera, Group, WebGLRenderer } from 'three'
+import {
+  Matrix4,
+  PerspectiveCamera,
+  Group,
+  Mesh,
+  PlaneGeometry,
+  MeshBasicMaterial,
+  WebGLRenderer,
+} from 'three'
 import {
   createExperience,
   prepareAR,
   cameraUnsupportedReason,
 } from '../src/ar/engine.js'
 import { arBackend } from '../src/ar/platform.js'
-import { seedArtworks } from '../src/data/catalog.js'
+import { seedArtworks, artDimensions } from '../src/data/catalog.js'
 
 vi.mock('three', async (original) => ({
   ...(await original()),
@@ -24,7 +32,10 @@ vi.mock('three', async (original) => ({
     setPixelRatio() {}
     setSize() {}
     setClearColor() {}
-    render = vi.fn()
+    render = vi.fn((scene, camera) => {
+      scene.updateMatrixWorld()
+      camera.updateMatrixWorld()
+    })
     clear = vi.fn()
     dispose = vi.fn()
     setAnimationLoop(callback) {
@@ -34,7 +45,18 @@ vi.mock('three', async (original) => ({
 }))
 vi.mock('../src/ar/artwork.js', async (original) => ({
   ...(await original()),
-  createArtwork: vi.fn(async () => new Group()),
+  createArtwork: vi.fn(async (art) => {
+    const model = new Group(),
+      size = artDimensions(art)
+    model.name = 'test-artwork'
+    model.add(
+      new Mesh(
+        new PlaneGeometry(size.width, size.height),
+        new MeshBasicMaterial(),
+      ),
+    )
+    return model
+  }),
 }))
 
 let engine, host, canvas, states, errors, session, source, renderer, now
@@ -92,7 +114,7 @@ beforeEach(() => {
   errors = []
   engine = createExperience({
     canvas,
-    onState: (s) => states.push(s),
+    onState: (s) => states.push({ ...states.at(-1), ...s }),
     onError: (e) => errors.push(e),
   })
 })
@@ -231,6 +253,70 @@ describe('Android WebXR routing and lifecycle', () => {
     expect(engine.mode).toBe('preview')
     expect(window.XR8.stop).not.toHaveBeenCalled()
     expect(canvas.hidden).toBe(false)
+  })
+  it('shows confirmed walls without debug, highlights dragging, and clears feedback on tracking loss and reset', async () => {
+    await start()
+    frame()
+    frame()
+    const scene = renderer.render.mock.lastCall[0]
+    const surfaces = scene.getObjectByName('artar-wall-surfaces')
+    expect(surfaces.children).toHaveLength(0)
+    frame()
+    expect(surfaces.visible).toBe(true)
+    expect(surfaces.children).toHaveLength(1)
+    expect(scene.getObjectByName('artar-debug')).toBeUndefined()
+    const fill = surfaces.getObjectByName('wall-fill')
+    expect(fill.material.opacity).toBeGreaterThan(0.18)
+    expect(engine.place()).toBe(true)
+    frame()
+    const idleOpacity = fill.material.opacity
+    expect(states.at(-1).artHint).toMatchObject({
+      x: expect.any(Number),
+      y: expect.any(Number),
+    })
+    expect(scene.getObjectByName('test-artwork').scale.toArray()).toEqual([
+      1, 1, 1,
+    ])
+    expect(scene.getObjectByName('artar-drag-outline')).toBeDefined()
+    const arCanvas = host.querySelector('.ar-canvas')
+    arCanvas.setPointerCapture = vi.fn()
+    const pointer = (type, x = 200, id = 1) => {
+      const event = new MouseEvent(type, {
+        button: 0,
+        clientX: x,
+        clientY: 320,
+      })
+      Object.defineProperty(event, 'pointerId', { value: id })
+      arCanvas.dispatchEvent(event)
+    }
+    const before = states.at(-1).position
+    pointer('pointerdown')
+    expect(states.at(-1).position).toEqual(before) // Holding off-center must not jump the artwork.
+    expect(states.at(-1).dragging).toBe(true)
+    expect(fill.material.opacity).toBeGreaterThan(0.3)
+    expect(arCanvas.classList.contains('is-dragging')).toBe(true)
+    pointer('pointermove', 230)
+    expect(states.at(-1).position.x).toBeGreaterThan(before.x)
+    pointer('pointerdown', 100, 2)
+    pointer('pointerup', 100, 2)
+    expect(states.at(-1).dragging).toBe(true)
+    pointer('pointercancel', 230)
+    expect(states.at(-1).dragging).toBe(false)
+    expect(fill.material.opacity).toBe(idleOpacity)
+    pointer('pointerdown', 230)
+    frame({ tracked: false })
+    expect(surfaces.visible).toBe(false)
+    expect(states.at(-1)).toMatchObject({
+      dragging: false,
+      artHint: null,
+      canPlace: false,
+    })
+    expect(arCanvas.classList.contains('is-dragging')).toBe(false)
+    frame()
+    expect(surfaces.visible).toBe(true)
+    engine.reset()
+    expect(surfaces.children).toHaveLength(0)
+    expect(states.at(-1)).toMatchObject({ placed: false, artHint: null })
   })
   it('uses native polygons when Depth is unavailable and clears placement on origin reset', async () => {
     Object.defineProperty(session, 'depthUsage', {

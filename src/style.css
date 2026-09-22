@@ -1310,6 +1310,7 @@ label {
   width: 100%;
   height: 100dvh;
   min-height: 0;
+  max-height: none;
   border-radius: 0;
   z-index: 100;
 }
@@ -1324,6 +1325,7 @@ label {
   height: 100%;
   display: block;
   touch-action: none;
+  cursor: grab;
 }
 /* The camera and art are composited by WebXR. Keep only controls in the DOM layer.
    Opacity preserves pointer hit testing on the canvas used for wall dragging. */
@@ -1391,7 +1393,7 @@ label {
   height: 140px;
 }
 .ar-active .toast {
-  bottom: calc(83px + env(safe-area-inset-bottom));
+  bottom: calc(162px + env(safe-area-inset-bottom));
 }
 .scan-center {
   position: absolute;
@@ -1413,11 +1415,11 @@ label {
   width: 90px;
   height: 90px;
   display: block;
-  border: 2px solid #e5f5c1;
+  border: 2px solid #78ffdf;
   border-radius: 4px;
   box-shadow:
-    0 0 40px #d5ef9133,
-    inset 0 0 30px #d5ef911a;
+    0 0 40px #78ffdf33,
+    inset 0 0 30px #78ffdf1a;
 }
 .scan-center p {
   font-size: 14px;
@@ -1425,27 +1427,76 @@ label {
   padding: 9px 12px;
   border-radius: 6px;
 }
-.ar-instruction {
+.ar-canvas.is-dragging,
+.room-canvas.is-dragging {
+  cursor: grabbing;
+}
+.ar-active .stage-chip.wall-legend {
+  color: #baffee;
+  background: #103c38e8;
+  border: 1px solid #78ffdf88;
+}
+.art-drag-hint {
   position: absolute;
-  z-index: 140;
+  z-index: 105;
+  transform: translate(-50%, 16px);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  border: 1px solid #78ffdf;
+  border-radius: 999px;
+  color: #eafff8;
+  background: #103c38ed;
+  box-shadow: 0 3px 14px #0003;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.art-drag-hint.dragging {
+  color: #0b3934;
+  background: #a2ffe2;
+}
+.ar-move-instruction {
+  position: absolute;
+  z-index: 110;
+  bottom: calc(80px + env(safe-area-inset-bottom));
   left: 50%;
-  bottom: 90px;
   transform: translateX(-50%);
-  width: min(390px, calc(100% - 30px));
-  background: #fffffff5;
-  box-shadow: 0 4px 30px #0002;
-  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 17px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  border: 1px solid #c0f5e34d;
   border-radius: 12px;
+  color: #f1fff9;
+  background: #122b2be8;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 3px 18px #0002;
+  pointer-events: none;
+}
+.ar-move-instruction > svg {
+  color: #a2ffe2;
+  flex-shrink: 0;
+}
+.ar-move-instruction strong,
+.ar-move-instruction span {
+  display: block;
+}
+.ar-move-instruction strong {
   font-size: 14px;
 }
-.ar-instruction > p {
-  margin-bottom: 13px;
+.ar-move-instruction span {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #c0ded4;
 }
-.ar-instruction input {
-  width: 100px;
-}
-.ar-instruction > .text-button {
-  margin-top: 12px;
+.dragging-art .ar-move-instruction {
+  border-color: #78ffdf;
+  background: #11483feb;
 }
 .ar-active .toast {
   z-index: 240;
@@ -2430,7 +2481,7 @@ label {
   padding: 8px;
 }
 .ar-active.debug-active .scan-center {
-  inset: auto 16px calc(85px + env(safe-area-inset-bottom));
+  inset: auto 16px calc(160px + env(safe-area-inset-bottom));
   gap: 8px;
 }
 .ar-active.debug-active .scan-reticle {
@@ -2459,6 +2510,20 @@ label {
   }
 }
 @media (orientation: landscape) and (max-height: 550px) {
+  .ar-move-instruction {
+    left: auto;
+    right: 16px;
+    transform: none;
+    max-width: calc(50vw - 32px);
+  }
+  .scan-center {
+    inset: 22% 16px auto;
+    gap: 8px;
+  }
+  .scan-reticle {
+    width: 48px;
+    height: 48px;
+  }
   .ar-debug-panel {
     width: 330px;
     max-height: calc(100dvh - 155px);
