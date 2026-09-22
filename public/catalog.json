@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "artworks": [
+    {
+      "id": "still-blue",
+      "title": "青の余白",
+      "subtitle": "Stillness in blue",
+      "artist": "ArtAR Studio",
+      "year": "2026",
+      "category": "抽象画",
+      "image": "./art/still-blue.svg",
+      "widthCm": 50,
+      "heightCm": 70,
+      "frameCm": 2,
+      "matCm": 4,
+      "depthCm": 3,
+      "frame": "oak",
+      "edition": "DEMO COLLECTION / 01"
+    },
+    {
+      "id": "sun-study",
+      "title": "午後のかたち",
+      "subtitle": "A study of sunlight",
+      "artist": "ArtAR Studio",
+      "year": "2026",
+      "category": "抽象画",
+      "image": "./art/sun-study.svg",
+      "widthCm": 60,
+      "heightCm": 60,
+      "frameCm": 2,
+      "matCm": 3,
+      "depthCm": 3,
+      "frame": "oak",
+      "edition": "DEMO COLLECTION / 02"
+    },
+    {
+      "id": "botanical",
+      "title": "葉の記憶",
+      "subtitle": "Botanical memory",
+      "artist": "ArtAR Studio",
+      "year": "2026",
+      "category": "ボタニカル",
+      "image": "./art/botanical.svg",
+      "widthCm": 40,
+      "heightCm": 60,
+      "frameCm": 1.5,
+      "matCm": 4,
+      "depthCm": 2.5,
+      "frame": "black",
+      "edition": "DEMO COLLECTION / 03"
+    },
+    {
+      "id": "tidelines",
+      "title": "静かな潮目",
+      "subtitle": "Between the tides",
+      "artist": "ArtAR Studio",
+      "year": "2026",
+      "category": "風景",
+      "image": "./art/tidelines.svg",
+      "widthCm": 80,
+      "heightCm": 50,
+      "frameCm": 2,
+      "matCm": 3,
+      "depthCm": 3,
+      "frame": "white",
+      "edition": "DEMO COLLECTION / 04"
+    },
+    {
+      "id": "balance",
+      "title": "均衡",
+      "subtitle": "Objects in balance",
+      "artist": "ArtAR Studio",
+      "year": "2026",
+      "category": "抽象画",
+      "image": "./art/balance.svg",
+      "widthCm": 45,
+      "heightCm": 60,
+      "frameCm": 2,
+      "matCm": 3,
+      "depthCm": 3,
+      "frame": "black",
+      "edition": "DEMO COLLECTION / 05"
+    },
+    {
+      "id": "line-garden",
+      "title": "線の庭",
+      "subtitle": "A garden of lines",
+      "artist": "ArtAR Studio",
+      "year": "2026",
+      "category": "ドローイング",
+      "image": "./art/line-garden.svg",
+      "widthCm": 50,
+      "heightCm": 50,
+      "frameCm": 1.5,
+      "matCm": 4,
+      "depthCm": 2.5,
+      "frame": "oak",
+      "edition": "DEMO COLLECTION / 06"
+    }
+  ],
+  "collections": [
+    {
+      "id": "all",
+      "name": "デモコレクション",
+      "artworkIds": [
+        "still-blue",
+        "sun-study",
+        "botanical",
+        "tidelines",
+        "balance",
+        "line-garden"
+      ]
+    },
+    {
+      "id": "quiet-room",
+      "name": "静かな部屋のために",
+      "artworkIds": ["still-blue", "botanical", "tidelines"]
+    }
+  ]
+}
