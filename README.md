@@ -58,7 +58,13 @@ PCではカメラを使わず、3Dの部屋で試せます。スマートフォ�
 3. `main` / `master` へのpushまたはActionsの手動実行で、テスト → ビルド → Pages公開。
 4. `https://<owner>.github.io/<repository>/` をスマートフォンで開く。
 
-アプリ内のURLはクエリで切り替えるため、SPAの404リダイレクト設定は不要です。デプロイ先リポジトリ・Git remoteはまだ設定していません。この作業ではGitHubへのpush・公開を行っていません。
+アプリ内のURLはクエリで切り替えるため、SPAの404リダイレクト設定は不要です。
+
+- リポジトリ：[OrthogonalInteractive/ArtAR](https://github.com/OrthogonalInteractive/ArtAR)
+- 公開先：[ArtAR](https://orthogonalinteractive.github.io/ArtAR/)
+- デプロイ履歴：[GitHub Actions](https://github.com/OrthogonalInteractive/ArtAR/actions/workflows/deploy.yml)
+
+`origin` は上記リポジトリ、既定ブランチは `master` です。PagesはGitHub Actionsからのデプロイに設定済みです。
 
 ## 作品を編集して公開する
 
