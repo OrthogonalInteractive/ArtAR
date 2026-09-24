@@ -69,6 +69,7 @@ export function debugSummary({
   diagnostics = null,
   walls = [],
   tracker = [],
+  boundaries = [],
   hit = null,
   fits = null,
   detectionMs = 0,
@@ -83,6 +84,9 @@ export function debugSummary({
     rawCount,
     sampledCount,
     wallCount: walls.length,
+    boundaryCount: boundaries.length,
+    ceilingCount: boundaries.filter((b) => b.kind === 'ceiling').length,
+    floorCount: boundaries.filter((b) => b.kind === 'floor').length,
     visible: tracking,
     bestInliers: diagnostics?.bestInliers || 0,
     requiredPoints:

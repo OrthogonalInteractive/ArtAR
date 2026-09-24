@@ -1,10 +1,10 @@
 import * as THREE from 'three'
-import { worldPoint } from './walls.js'
+import { worldPoint, clipPolygon } from './walls.js'
 import { disposeObject } from './artwork.js'
 import { wallColors } from './wall-colors.js'
 
 // Product feedback is independent of the optional diagnostic overlay.
-// Only confirmed footprints are shown; never extend them to an infinite wall.
+// Strong fill/grid marks measured support; faint fill/dashes mark finite inference.
 export function createWallFeedback(scene) {
   const root = new THREE.Group()
   root.name = 'artar-wall-surfaces'
@@ -16,7 +16,57 @@ export function createWallFeedback(scene) {
     const colors = wallColors(wall)
     const group = new THREE.Group()
     group.name = `surface-${wall.id}`
-    const vertices = wall.polygon.map((p) => worldPoint(wall, p, 0.003))
+    let observedPolygon = wall.polygon
+    let extensionFill, extensionRim
+    if (wall.surfacePolygon) {
+      const extendedVertices = wall.surfacePolygon.map((p) =>
+        worldPoint(wall, p, 0.001),
+      )
+      const extendedGeometry = new THREE.BufferGeometry().setFromPoints(
+        extendedVertices,
+      )
+      const extendedIndices = []
+      for (let i = 1; i < extendedVertices.length - 1; i++)
+        extendedIndices.push(0, i, i + 1)
+      extendedGeometry.setIndex(extendedIndices)
+      extensionFill = new THREE.Mesh(
+        extendedGeometry,
+        new THREE.MeshBasicMaterial({
+          color: colors.fill,
+          transparent: true,
+          opacity: 0.07,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        }),
+      )
+      extensionFill.name = 'wall-extension-fill'
+      const border = new THREE.BufferGeometry().setFromPoints([
+        ...extendedVertices,
+        extendedVertices[0],
+      ])
+      extensionRim = new THREE.Line(
+        border,
+        new THREE.LineDashedMaterial({
+          color: colors.rim,
+          transparent: true,
+          opacity: 0.5,
+          dashSize: 0.1,
+          gapSize: 0.07,
+          depthWrite: false,
+        }),
+      )
+      extensionRim.computeLineDistances()
+      extensionRim.name = 'wall-extension-rim'
+      group.add(extensionFill, extensionRim)
+      for (let i = 0; i < wall.surfacePolygon.length; i++) {
+        const p = wall.surfacePolygon[i],
+          q = wall.surfacePolygon[(i + 1) % wall.surfacePolygon.length]
+        const a = p.y - q.y,
+          b = q.x - p.x
+        observedPolygon = clipPolygon(observedPolygon, a, b, a * p.x + b * p.y)
+      }
+    }
+    const vertices = observedPolygon.map((p) => worldPoint(wall, p, 0.003))
     const indices = []
     for (let i = 1; i < vertices.length - 1; i++) indices.push(0, i, i + 1)
     const geometry = new THREE.BufferGeometry().setFromPoints(vertices)
@@ -65,7 +115,7 @@ export function createWallFeedback(scene) {
 
     // Grid segments are clipped to the convex observed polygon.
     const gridVertices = [],
-      polygon = wall.polygon
+      polygon = observedPolygon
     for (const axis of ['x', 'y']) {
       const other = axis === 'x' ? 'y' : 'x'
       const min = Math.min(...polygon.map((p) => p[axis]))
@@ -101,7 +151,7 @@ export function createWallFeedback(scene) {
     grid.renderOrder = 3
     group.add(grid)
     root.add(group)
-    return { wall, group, fill, rim, grid }
+    return { wall, group, fill, rim, grid, extensionFill, extensionRim }
   }
 
   return {
@@ -152,6 +202,12 @@ export function createWallFeedback(scene) {
             : selected
               ? 0.6
               : 0.3
+        if (entry.extensionFill) {
+          entry.extensionFill.material.opacity =
+            entry.fill.material.opacity * 0.32
+          entry.extensionRim.material.opacity =
+            entry.rim.material.opacity * 0.55
+        }
       }
       root.visible = tracking
     },

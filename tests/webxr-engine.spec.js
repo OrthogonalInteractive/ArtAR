@@ -141,6 +141,9 @@ function frame({
   depth = true,
   depthMeters = 2,
   native = false,
+  nativeSize = 1,
+  ceilingHeight = null,
+  floorHeight = null,
   hits = [],
   yaw = 0,
   elapsed = 700,
@@ -155,14 +158,36 @@ function frame({
   }
   const plane = {
     orientation: 'vertical',
-    planeSpace: {},
+    planeSpace: {
+      matrix: new Matrix4().makeRotationX(Math.PI / 2).setPosition(0, 1.5, -2),
+    },
     polygon: [
-      { x: -1, y: 0, z: -1 },
-      { x: 1, y: 0, z: -1 },
-      { x: 1, y: 0, z: 1 },
-      { x: -1, y: 0, z: 1 },
+      { x: -nativeSize, y: 0, z: -nativeSize },
+      { x: nativeSize, y: 0, z: -nativeSize },
+      { x: nativeSize, y: 0, z: nativeSize },
+      { x: -nativeSize, y: 0, z: nativeSize },
     ],
   }
+  const horizontal = [
+    ['ceiling', ceilingHeight],
+    ['floor', floorHeight],
+  ]
+    .filter(([, height]) => height !== null)
+    .map(([kind, height]) => ({
+      orientation: 'horizontal',
+      semanticLabel: kind,
+      planeSpace: {
+        matrix: new Matrix4()
+          .makeRotationZ(kind === 'ceiling' ? Math.PI : 0)
+          .setPosition(0, height, -1.3),
+      },
+      polygon: [
+        { x: -2, y: 0, z: -1 },
+        { x: 2, y: 0, z: -1 },
+        { x: 2, y: 0, z: 1 },
+        { x: -2, y: 0, z: 1 },
+      ],
+    }))
   const f = {
     getViewerPose: () =>
       tracked ? { views: [view], emulatedPosition: false } : null,
@@ -184,11 +209,10 @@ function frame({
           ]
         : []
     },
-    detectedPlanes: new Set(native ? [plane] : []),
-    getPose: () => ({
+    detectedPlanes: new Set([...(native ? [plane] : []), ...horizontal]),
+    getPose: (space) => ({
       transform: {
-        matrix: new Matrix4().makeRotationX(Math.PI / 2).setPosition(0, 1.5, -2)
-          .elements,
+        matrix: space.matrix.elements,
       },
     }),
   }
@@ -196,6 +220,50 @@ function frame({
 }
 
 describe('Android WebXR routing and lifecycle', () => {
+  it('places beyond a small patch, refits below a later ceiling and clears bounds on rescan', async () => {
+    engine.setDebug(true)
+    await start()
+    const observation = { depth: false, native: true, nativeSize: 0.3 }
+    for (let i = 0; i < 3; i++) frame(observation)
+    expect(engine.place()).toBe(true) // The .6m measured patch is smaller than the framed artwork.
+    engine.nudge(0.5, 1.2)
+    const scene = renderer.render.mock.lastCall[0]
+    const model = scene.getObjectByName('test-artwork')
+    expect(model.position.y).toBeCloseTo(2.7)
+    const rotation = model.quaternion.clone()
+    const id = states.at(-1).placedWallId
+    for (let i = 0; i < 3; i++) frame({ ...observation, ceilingHeight: 2.1 })
+    expect(states.at(-1)).toMatchObject({
+      placed: true,
+      placedWallId: id,
+      wallCount: 1,
+      debug: { ceilingCount: 1, floorCount: 0 },
+    })
+    expect(model.position.y).toBeCloseTo(
+      2.1 - artDimensions(seedArtworks[0]).height / 2 - 0.02,
+    )
+    expect(model.position.z).toBeCloseTo(-1.992)
+    expect(model.quaternion.toArray()).toEqual(rotation.toArray())
+    // A newly discovered room too small for the full frame must release placement.
+    expect(
+      await engine.setArt({ ...seedArtworks[0], widthCm: 100, heightCm: 200 }),
+    ).toBe(true)
+    for (let i = 0; i < 3; i++)
+      frame({ ...observation, ceilingHeight: 2.1, floorHeight: 0.3 })
+    expect(states.at(-1)).toMatchObject({
+      placed: false,
+      wallCount: 1,
+      debug: { ceilingCount: 1, floorCount: 1 },
+    })
+    expect(scene.getObjectByName('test-artwork').visible).toBe(false)
+    engine.reset()
+    for (let i = 0; i < 3; i++) frame(observation)
+    expect(states.at(-1)).toMatchObject({
+      canPlace: true,
+      debug: { ceilingCount: 0, floorCount: 0 },
+    })
+    expect(engine.place()).toBe(true)
+  })
   it('prepares Android without loading 8th Wall and leaves iOS/iPadOS routed to XR8', async () => {
     expect(cameraUnsupportedReason()).toBeNull()
     await prepareAR()
@@ -503,7 +571,7 @@ describe('Android WebXR routing and lifecycle', () => {
     expect(engine.place()).toBe(true)
     expect(states.at(-1).wallSource).toBe('webxr-hit-test')
     expect(
-      await engine.setArt({ ...seedArtworks[0], widthCm: 300, heightCm: 300 }),
+      await engine.setArt({ ...seedArtworks[0], widthCm: 700, heightCm: 700 }),
     ).toBe(false)
     expect(states.at(-1).placed).toBe(true)
   })

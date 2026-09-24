@@ -14,6 +14,11 @@ import { createARDebugLayer, debugSummary } from './debug.js'
 import { arBackend, prepareWebXR, WEBXR_UNAVAILABLE } from './platform.js'
 import { createWebXRSession } from './webxr.js'
 import { createWallFeedback, createDragOutline } from './wall-feedback.js'
+import { createWallExpansion } from './wall-expansion.js'
+import {
+  createBoundaryTracker,
+  detectHorizontalBoundaries,
+} from './room-boundaries.js'
 
 // Matches the engine distribution used by ../portfolio. No API key required.
 export const ENGINE_URL =
@@ -81,6 +86,7 @@ export function createExperience({ canvas, onState, onError }) {
     model,
     art,
     walls = [],
+    boundaries = [],
     selectedWall,
     placement = { x: 0, y: 1.65 }
   let mode = 'preview',
@@ -114,7 +120,15 @@ export function createExperience({ canvas, onState, onError }) {
     detectionAt = null,
     latestDebug = debugSummary()
   const tracker = createWallTracker(),
+    boundaryTracker = createBoundaryTracker(),
+    expansion = createWallExpansion(),
     raycaster = new THREE.Raycaster()
+  function resetWallMap() {
+    tracker.reset()
+    boundaryTracker.reset()
+    expansion.reset()
+    boundaries = []
+  }
   const notify = (extra = {}) =>
     onState({
       mode,
@@ -450,7 +464,7 @@ export function createExperience({ canvas, onState, onError }) {
       xr?.clearCameraPipelineModules()
       oldRenderer?.dispose()
     }
-    tracker.reset()
+    resetWallMap()
     window.removeEventListener('resize', resizeAR)
     unbind(arCanvas)
     arCanvas.remove()
@@ -489,6 +503,7 @@ export function createExperience({ canvas, onState, onError }) {
     if (!tracking) {
       // Do not leave an old center hit or diagnostic pretending tracking is live.
       tracker.update([], now)
+      boundaryTracker.update([], now)
       candidateWall = null
       rayPoint = null
       diagnostics = null
@@ -508,9 +523,16 @@ export function createExperience({ canvas, onState, onError }) {
         camera.position,
         { diagnostics: report },
       )
+      const horizontal = detectHorizontalBoundaries(
+        reality.worldPoints || [],
+        camera.position,
+      )
       if (backend === 'webxr') {
         for (const wall of detected)
           wall.source = `webxr-${reality.webxr.pointSource}`
+        for (const boundary of horizontal)
+          boundary.source = `webxr-${reality.webxr.pointSource}`
+        horizontal.push(...(reality.nativeBoundaries || []))
         // Prefer native polygons to a second estimate of the same plane.
         for (const native of reality.nativeWalls || []) {
           for (let i = detected.length - 1; i >= 0; i--) {
@@ -526,15 +548,26 @@ export function createExperience({ canvas, onState, onError }) {
       diagnostics = report
       const found = tracker.update(detected, now, {
         cameraPosition: camera.position,
+        associationSurfaces: walls,
       })
-      // Preserve the selected wall's stable pose while scanning other surfaces.
-      walls = found.map(
-        (w) =>
-          walls.find((old) => old.id === w.id && old.id === selectedWall?.id) ||
-          w,
-      )
-      if (selectedWall && !walls.some((w) => w.id === selectedWall.id))
-        walls.push(selectedWall)
+      boundaries = boundaryTracker.update(horizontal, now, {
+        cameraPosition: camera.position,
+      })
+      walls = expansion.update(found, boundaries)
+      // Pose stays anchored, while later ceiling/corner observations refine the
+      // usable extent. Refit the entire frame against newly discovered limits.
+      if (selectedWall) {
+        selectedWall = walls.find((w) => w.id === selectedWall.id)
+        const fit = selectedWall && constrain(selectedWall, placement)
+        if (fit) {
+          placement = { x: fit.x, y: fit.y }
+          applyPosition()
+        } else {
+          pointerUp()
+          selectedWall = null
+          if (model) model.visible = false
+        }
+      }
       updateGuide()
       if (debugEnabled)
         debugLayer?.updateWalls(
@@ -565,6 +598,7 @@ export function createExperience({ canvas, onState, onError }) {
         sampledCount,
         diagnostics,
         walls,
+        boundaries,
         tracker: tracker.snapshot(),
         hit: candidateWall,
         fits:
@@ -595,7 +629,7 @@ export function createExperience({ canvas, onState, onError }) {
     tracking = false
     running = true
     walls = []
-    tracker.reset()
+    resetWallMap()
     lastDetection = 0
     lastStatus = ''
     diagnostics = null
@@ -647,7 +681,7 @@ export function createExperience({ canvas, onState, onError }) {
         onReset() {
           // A reference-space reset invalidates old room coordinates.
           pointerUp()
-          tracker.reset()
+          resetWallMap()
           diagnostics = null
           detectionAt = null
           lastDetection = 0
@@ -695,6 +729,7 @@ export function createExperience({ canvas, onState, onError }) {
     tracking = false
     running = true
     walls = []
+    resetWallMap()
     lastDetection = 0
     lastStatus = ''
     diagnostics = null
@@ -836,7 +871,7 @@ export function createExperience({ canvas, onState, onError }) {
       pointerUp()
       if (mode === 'ar') {
         webxr?.reset()
-        tracker.reset()
+        resetWallMap()
         walls = []
         selectedWall = null
         candidateWall = null

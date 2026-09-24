@@ -1,5 +1,6 @@
 import { Matrix4, Vector3 } from 'three'
 import { makeWall, localPoint, convexHull } from './walls.js'
+import { horizontalKind, makeHorizontalBoundary } from './room-boundaries.js'
 
 const UP = new Vector3(0, 1, 0)
 
@@ -73,6 +74,41 @@ export function planeCandidates(frame, referenceSpace, cameraPosition) {
       polygon,
       source: 'webxr-plane',
     })
+  }
+  return candidates
+}
+
+/** Horizontal polygons are room limits only; they are never selectable walls. */
+export function horizontalPlaneCandidates(
+  frame,
+  referenceSpace,
+  cameraPosition,
+) {
+  const candidates = []
+  for (const plane of frame.detectedPlanes || []) {
+    if (plane.orientation === 'vertical') continue
+    const pose = frame.getPose(plane.planeSpace, referenceSpace)
+    if (!pose || pose.emulatedPosition) continue
+    const matrix = new Matrix4().fromArray(pose.transform.matrix)
+    if (Math.abs(UP.clone().transformDirection(matrix).y) < 0.99) continue
+    const origin = new Vector3().setFromMatrixPosition(matrix)
+    if (origin.distanceTo(cameraPosition) > 7) continue
+    const kind = horizontalKind(
+      origin.y,
+      cameraPosition,
+      plane.semanticLabel || '',
+    )
+    if (!kind) continue
+    const polygon = Array.from(plane.polygon, (p) =>
+      new Vector3(p.x, p.y, p.z).applyMatrix4(matrix),
+    ).map((p) => ({ x: p.x, y: p.z }))
+    const candidate = makeHorizontalBoundary({
+      origin,
+      polygon,
+      kind,
+      source: 'webxr-plane',
+    })
+    if (candidate) candidates.push(candidate)
   }
   return candidates
 }

@@ -187,7 +187,7 @@ describe('wall memory within an AR session', () => {
     expect(found[0]).toBe(remembered)
     expect(fitPlacement(found[0], { x: -0.6, y: 1 }, 0.5, 0.8)).not.toBeNull()
   })
-  it('adds newly observed area in the confirmed coordinate system and keeps placed walls fixed', () => {
+  it('adds newly observed area while keeping placed wall poses fixed', () => {
     const tracker = createWallTracker()
     const remembered = confirm(
       tracker,
@@ -210,8 +210,12 @@ describe('wall memory within an AR session', () => {
       origin: worldPoint(remembered, { x: 1.5, y: 0 }, 0.02),
       normal: remembered.normal,
     })
-    expect(tracker.update([beyond], 2800)[0]).toBe(expanded)
-    expect(tracker.update([], 60000)).toEqual([expanded])
+    const [extended] = tracker.update([beyond], 2800)
+    expect(extended.id).toBe(expanded.id)
+    expect(extended.origin).toEqual(expanded.origin)
+    expect(extended.normal).toEqual(expanded.normal)
+    expect(Math.max(...extended.polygon.map((p) => p.x))).toBeCloseTo(2.5)
+    expect(tracker.update([], 60000)).toEqual([extended])
   })
   it('expires provisional observations before matching and requires distinct updates', () => {
     const tracker = createWallTracker(),

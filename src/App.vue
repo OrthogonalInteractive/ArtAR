@@ -434,7 +434,7 @@ onBeforeUnmount(() => {
               ><Icon :name="isAR ? 'wall' : 'grid'" :size="15" />{{
                 isAR
                   ? state.tracking
-                    ? `${state.wallCount}面を認識 · 色で区別`
+                    ? `${state.wallCount}面を認識 · 薄色は推定`
                     : '空間を認識中'
                   : 'バーチャルルーム'
               }}</span
@@ -555,7 +555,7 @@ onBeforeUnmount(() => {
                       : state.placed
                         ? '作品に触れたまま、上下・左右へ'
                         : state.wallCount
-                          ? '壁の向きごとに色分けします'
+                          ? '濃い面は観測済み・薄い面は推定範囲'
                           : '端末の位置を左右に少し動かしてください'
               }}</span>
             </div>

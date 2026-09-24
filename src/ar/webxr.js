@@ -1,6 +1,7 @@
 import {
   depthWorldPoints,
   planeCandidates,
+  horizontalPlaneCandidates,
   verticalHit,
   createHitCloud,
 } from './webxr-geometry.js'
@@ -24,7 +25,8 @@ export function createWebXRSession({
   let sources = [],
     lastSample = -Infinity,
     points = [],
-    planes = []
+    planes = [],
+    boundaries = []
   let depthState = 'unavailable',
     pointSource = 'hit-test',
     depthError = '',
@@ -34,6 +36,7 @@ export function createWebXRSession({
     hits.clear()
     points = []
     planes = []
+    boundaries = []
     lastSample = -Infinity
   }
   const referenceReset = () => {
@@ -167,6 +170,11 @@ export function createWebXRSession({
             if (time - lastSample >= 200) {
               lastSample = time
               planes = planeCandidates(frame, referenceSpace, camera.position)
+              boundaries = horizontalPlaneCandidates(
+                frame,
+                referenceSpace,
+                camera.position,
+              )
               for (const source of sources) {
                 for (const result of frame.getHitTestResults(source)) {
                   const hit = verticalHit(
@@ -215,6 +223,7 @@ export function createWebXRSession({
                     : 'POSE_UNAVAILABLE',
             worldPoints: points,
             nativeWalls: planes,
+            nativeBoundaries: boundaries,
             webxr: {
               depth: depthState,
               depthError,

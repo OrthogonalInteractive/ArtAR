@@ -74,6 +74,10 @@ async function copy() {
       </div>
     </dl>
     <p class="debug-message">{{ data.message }}</p>
+    <p class="debug-message">
+      境界候補：天井 {{ data.ceilingCount }}・床 {{ data.floorCount }} ／
+      濃色：観測済み・薄色／破線：推定延長
+    </p>
     <details class="debug-details">
       <summary>壁候補・判定条件</summary>
       <p>
@@ -134,7 +138,7 @@ async function copy() {
         空間特徴点からの壁は、端末が6cm以上移動しても位置・向きが一致することを確認して採用します。
       </p>
       <p>
-        色の面は観測された範囲です。物理的な壁の端や障害物を示すものではありません。線の矢印は壁の表向きです。
+        濃い面は観測された範囲、薄い面と破線は推定で延長した範囲です。境界が未検出の方向は左右各2m・上下各1.5mまで延長します。天井・床の候補や隣の壁を検出すると境界で区切ります。家具や開口部の識別は行いません。線の矢印は壁の表向きです。
       </p>
     </details>
     <div v-if="copyError" class="debug-copy-fallback">

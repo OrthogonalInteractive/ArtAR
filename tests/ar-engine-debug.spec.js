@@ -104,6 +104,37 @@ function frame(status, points) {
   })
 }
 describe('XR8 debug pipeline lifecycle', () => {
+  it('uses observed horizontal feature points to stop extension at a ceiling', () => {
+    engine.setDebug(true)
+    const points = []
+    for (let x = -1; x <= 1; x += 0.1)
+      for (let y = 0.2; y <= 2.2; y += 0.1)
+        points.push({ position: { x, y, z: 0 } })
+    for (let i = 0; i < 100; i++)
+      points.push({
+        position: {
+          x: (i % 10) * 0.12 - 0.6,
+          y: 2.5,
+          z: Math.floor(i / 10) * 0.12,
+        },
+      })
+    for (let i = 0; i < 3; i++) {
+      now += 700
+      xrScene.camera.position.x = i * 0.04
+      frame('NORMAL', points)
+    }
+    expect(updates.at(-1)).toMatchObject({
+      wallCount: 1,
+      debug: { ceilingCount: 1 },
+    })
+    const positions = xrScene.scene.getObjectByName('wall-extension-fill')
+      .geometry.attributes.position
+    expect(
+      Math.max(
+        ...Array.from({ length: positions.count }, (_, i) => positions.getY(i)),
+      ),
+    ).toBeCloseTo(2.5)
+  })
   it('adds no debug layer until enabled and exposes received point counts', () => {
     frame('NORMAL', [])
     expect(xrScene.scene.getObjectByName('artar-debug')).toBeUndefined()

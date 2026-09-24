@@ -53,7 +53,7 @@ export const worldPoint = (wall, point, depth = 0) =>
     .addScaledVector(wall.up, point.y)
     .addScaledVector(wall.normal, depth)
 
-function clip(polygon, a, b, c) {
+export function clipPolygon(polygon, a, b, c) {
   const result = []
   for (let i = 0; i < polygon.length; i++) {
     const p = polygon[i],
@@ -78,7 +78,7 @@ export const WALL_MATCH_LIMITS = Object.freeze({
   duplicateDepth: 0.35,
   duplicateOverlap: 0.55,
 })
-const polygonArea = (polygon) =>
+export const polygonArea = (polygon) =>
   Math.abs(
     polygon.reduce((sum, p, i) => {
       const q = polygon[(i + 1) % polygon.length]
@@ -86,7 +86,7 @@ const polygonArea = (polygon) =>
     }, 0),
   ) / 2
 
-function polygonGap(a, b) {
+export function polygonGap(a, b) {
   let closest = Infinity
   for (const [points, edges] of [
     [a, b],
@@ -136,7 +136,7 @@ export function wallMatch(first, second) {
       q = a.polygon[(i + 1) % a.polygon.length]
     const x = p.y - q.y,
       y = q.x - p.x
-    overlap = clip(overlap, x, y, x * p.x + y * p.y)
+    overlap = clipPolygon(overlap, x, y, x * p.x + y * p.y)
   }
   const area = polygonArea(overlap)
   const centerPoints = area > EPS ? overlap : projected
@@ -179,22 +179,23 @@ export function placementArea(
   margin = 0.02,
 ) {
   if (!(width > 0 && height > 0 && Number.isFinite(width + height))) return []
-  let area = wall.polygon.map((p) => ({ ...p }))
+  const polygon = wall.surfacePolygon || wall.polygon
+  let area = polygon.map((p) => ({ ...p }))
   const hx = width / 2 + margin,
     hy = height / 2 + margin
-  for (let i = 0; i < wall.polygon.length && area.length; i++) {
-    const p = wall.polygon[i],
-      q = wall.polygon[(i + 1) % wall.polygon.length]
+  for (let i = 0; i < polygon.length && area.length; i++) {
+    const p = polygon[i],
+      q = polygon[(i + 1) % polygon.length]
     const a = p.y - q.y,
       b = q.x - p.x
-    area = clip(
+    area = clipPolygon(
       area,
       a,
       b,
       a * p.x + b * p.y + Math.abs(a) * hx + Math.abs(b) * hy,
     )
   }
-  for (const other of neighbors) {
+  for (const other of wall.boundaryWalls || neighbors) {
     if (other.id === wall.id || Math.abs(other.normal.dot(wall.normal)) > 0.98)
       continue
     // Consider only neighboring scanned patches near this wall, not arbitrary planes across the room.
@@ -203,7 +204,7 @@ export function placementArea(
       b = other.normal.dot(wall.up)
     const signedOrigin = other.plane.distanceToPoint(wall.origin)
     const extrusion = Math.min(0, other.normal.dot(wall.normal) * depth)
-    area = clip(
+    area = clipPolygon(
       area,
       a,
       b,
@@ -294,7 +295,7 @@ function fitVerticalPlane(points, cameraPosition) {
 
 // A large convex hull alone is not evidence of a surface. Two furniture edges
 // or a thin diagonal strip can span both axes with no points between them.
-function surfaceSupport(points, polygon, width, height) {
+export function surfaceSupport(points, polygon, width, height) {
   const minX = Math.min(...points.map((p) => p.x))
   const minY = Math.min(...points.map((p) => p.y))
   const cells = Array(9).fill(0)
@@ -509,7 +510,7 @@ export function createWallTracker() {
     counter = 0
   const confirmed = (entry) => entry.confirmed
   return {
-    update(candidates, now, { cameraPosition } = {}) {
+    update(candidates, now, { cameraPosition, associationSurfaces = [] } = {}) {
       // Only provisional candidates expire. Apply expiry before matching so old
       // one-off observations cannot eventually accumulate into a confirmed wall.
       entries = entries.filter((e) => confirmed(e) || now - e.updated < 2500)
@@ -521,7 +522,29 @@ export function createWallTracker() {
       )
       for (const candidate of observations) {
         const matches = entries
-          .map((entry) => ({ entry, match: wallMatch(entry.wall, candidate) }))
+          .map((entry) => {
+            let match = wallMatch(entry.wall, candidate)
+            // A fresh, independently detected coplanar patch inside a confirmed
+            // wall's extension keeps that wall ID. Inference never confirms a wall.
+            if (
+              !match &&
+              confirmed(entry) &&
+              stableObservation(entry.wall, makeWall(candidate))
+            ) {
+              const surface = associationSurfaces.find(
+                (w) => w.id === entry.wall.id,
+              )
+              if (
+                surface?.surfacePolygon &&
+                wallMatch(
+                  { ...entry.wall, polygon: surface.surfacePolygon },
+                  candidate,
+                ) === 'same'
+              )
+                match = 'same'
+            }
+            return { entry, match }
+          })
           .filter((item) => item.match)
           .sort(
             (a, b) =>
@@ -588,7 +611,7 @@ export function createWallTracker() {
           entry.confirmed =
             entry.seen >= WALL_DETECTION_LIMITS.confirmations && viewpointReady
         }
-        if (!entry.locked && stableObservation(entry.wall, observed))
+        if (stableObservation(entry.wall, observed))
           entry.wall = extendObservedWall(entry.wall, observed)
         seenThisUpdate.add(entry)
         entry.updated = now
