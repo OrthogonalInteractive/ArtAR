@@ -3,7 +3,7 @@ import { worldPoint } from './walls.js'
 import { disposeObject } from './artwork.js'
 
 // Product feedback is independent of the optional diagnostic overlay.
-// Only confirmed, observed polygons are shown; nothing is extended beyond them.
+// Only confirmed footprints are shown; never extend them to an infinite wall.
 export function createWallFeedback(scene) {
   const root = new THREE.Group()
   root.name = 'artar-wall-surfaces'

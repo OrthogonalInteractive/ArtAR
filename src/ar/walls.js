@@ -308,12 +308,37 @@ export function detectVerticalWalls(
   return walls
 }
 
-/** Require repeated agreement before exposing a plane to the user. Lock it after selection. */
+// Keep the confirmed pose and grow its footprint with observations in that same basis.
+// A partial view must never replace the previously observed part of a wall.
+function extendObservedWall(wall, candidate) {
+  const observed = makeWall(candidate)
+  const polygon = convexHull([
+    ...wall.polygon,
+    ...observed.polygon.map((p) => localPoint(wall, worldPoint(observed, p))),
+  ])
+  if (
+    polygon.length === wall.polygon.length &&
+    polygon.every(
+      (p, i) =>
+        Math.abs(p.x - wall.polygon[i].x) < EPS &&
+        Math.abs(p.y - wall.polygon[i].y) < EPS,
+    )
+  )
+    return wall
+  return makeWall({ ...wall, polygon })
+}
+
+/** Confirm across updates; retain confirmed walls until the AR session/reset ends. */
 export function createWallTracker() {
   let entries = [],
     counter = 0
+  const confirmed = (entry) => entry.seen >= WALL_DETECTION_LIMITS.confirmations
   return {
     update(candidates, now) {
+      // Only provisional candidates expire. Apply expiry before matching so old
+      // one-off observations cannot eventually accumulate into a confirmed wall.
+      entries = entries.filter((e) => confirmed(e) || now - e.updated < 2500)
+      const seenThisUpdate = new Set()
       for (const candidate of candidates) {
         let entry = entries.find(
           (e) =>
@@ -331,21 +356,23 @@ export function createWallTracker() {
           entries.push(entry)
         }
         if (!entry.locked)
-          entry.wall = makeWall({ ...candidate, id: entry.wall.id })
-        entry.seen++
+          entry.wall = confirmed(entry)
+            ? extendObservedWall(entry.wall, candidate)
+            : makeWall({ ...candidate, id: entry.wall.id })
+        if (!seenThisUpdate.has(entry)) {
+          entry.seen++
+          seenThisUpdate.add(entry)
+        }
         entry.updated = now
       }
-      entries = entries.filter((e) => e.locked || now - e.updated < 2500)
-      return entries
-        .filter((e) => e.seen >= WALL_DETECTION_LIMITS.confirmations)
-        .map((e) => e.wall)
+      return entries.filter(confirmed).map((e) => e.wall)
     },
     snapshot() {
       return entries.map((e) => ({
         id: e.wall.id,
         confirmations: e.seen,
         locked: e.locked,
-        confirmed: e.seen >= WALL_DETECTION_LIMITS.confirmations,
+        confirmed: confirmed(e),
       }))
     },
     lock(id) {

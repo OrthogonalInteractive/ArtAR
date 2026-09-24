@@ -135,9 +135,18 @@ describe('XR8 debug pipeline lifecycle', () => {
     expect(surfaces.visible).toBe(true)
     expect(surfaces.children).toHaveLength(1)
     expect(xrScene.scene.getObjectByName('artar-debug')).toBeUndefined()
+    const remembered = surfaces.children[0]
+    now += 30000
+    frame('NORMAL', [])
+    expect(updates.at(-1)).toMatchObject({ wallCount: 1, placed: false })
+    expect(surfaces.children).toEqual([remembered])
     now += 700
     frame('LIMITED', [])
     expect(surfaces.visible).toBe(false)
+    now += 30000
+    frame('NORMAL', [])
+    expect(surfaces.visible).toBe(true)
+    expect(surfaces.children).toEqual([remembered])
     engine.stopAR()
     expect(xrScene.scene.getObjectByName('artar-wall-surfaces')).toBeUndefined()
   })

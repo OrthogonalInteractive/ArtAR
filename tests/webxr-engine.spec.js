@@ -140,12 +140,15 @@ function frame({
   depth = true,
   native = false,
   hits = [],
+  yaw = 0,
 } = {}) {
   now += 700
   const camera = new PerspectiveCamera(60, 360 / 640, 0.05, 30)
   const view = {
     projectionMatrix: camera.projectionMatrix.elements,
-    transform: { matrix: new Matrix4().makeTranslation(0, 1.5, 0).elements },
+    transform: {
+      matrix: new Matrix4().makeRotationY(yaw).setPosition(0, 1.5, 0).elements,
+    },
   }
   const plane = {
     orientation: 'vertical',
@@ -318,6 +321,52 @@ describe('Android WebXR routing and lifecycle', () => {
     expect(surfaces.children).toHaveLength(0)
     expect(states.at(-1)).toMatchObject({ placed: false, artHint: null })
   })
+  it.each([
+    { source: 'depth', observation: { depth: true } },
+    { source: 'plane', observation: { depth: false, native: true } },
+  ])(
+    'remembers an unplaced $source wall when facing away and returns without rescanning',
+    async ({ source, observation }) => {
+      await start()
+      for (let i = 0; i < 3; i++) frame(observation)
+      const scene = renderer.render.mock.lastCall[0]
+      const surfaces = scene.getObjectByName('artar-wall-surfaces')
+      const remembered = surfaces.children[0]
+      const vertices = [
+        ...remembered.getObjectByName('wall-fill').geometry.attributes.position
+          .array,
+      ]
+      expect(states.at(-1)).toMatchObject({
+        placed: false,
+        wallCount: 1,
+        canPlace: true,
+      })
+      now += 30000
+      frame({ depth: false, yaw: Math.PI })
+      expect(states.at(-1)).toMatchObject({
+        tracking: true,
+        wallCount: 1,
+        canPlace: false,
+      })
+      expect(surfaces.children).toEqual([remembered])
+      // Return with no new Depth/plane data: the remembered wall is already usable.
+      frame({ depth: false })
+      expect(states.at(-1).canPlace).toBe(true)
+      expect([
+        ...remembered.getObjectByName('wall-fill').geometry.attributes.position
+          .array,
+      ]).toEqual(vertices)
+      expect(engine.place()).toBe(true)
+      expect(states.at(-1).wallSource).toBe(`webxr-${source}`)
+      now += 30000
+      frame({ tracked: false, depth: false })
+      expect(surfaces.visible).toBe(false)
+      frame({ depth: false })
+      expect(surfaces.visible).toBe(true)
+      expect(surfaces.children).toEqual([remembered])
+      expect(states.at(-1)).toMatchObject({ placed: true, canPlace: true })
+    },
+  )
   it('uses native polygons when Depth is unavailable and clears placement on origin reset', async () => {
     Object.defineProperty(session, 'depthUsage', {
       get() {
@@ -364,6 +413,11 @@ describe('Android WebXR routing and lifecycle', () => {
       pointSource: 'hit-test',
       depth: 'unavailable',
     })
+    // Expiring raw hit samples must not erase the wall confirmed from them.
+    now += 30000
+    frame({ depth: false, yaw: Math.PI })
+    expect(states.at(-1)).toMatchObject({ wallCount: 1, canPlace: false })
+    frame({ depth: false })
     expect(engine.place()).toBe(true)
     expect(states.at(-1).wallSource).toBe('webxr-hit-test')
     expect(

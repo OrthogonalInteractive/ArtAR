@@ -148,3 +148,79 @@ describe('wall estimation from engine point clouds', () => {
     expect(tracker.update([], 11000)).toHaveLength(0)
   })
 })
+
+describe('wall memory within an AR session', () => {
+  function confirm(tracker, candidate) {
+    tracker.update([candidate], 0)
+    tracker.update([candidate], 700)
+    return tracker.update([candidate], 1400)[0]
+  }
+  it('retains an unplaced wall without new observations and clears it on reset', () => {
+    const tracker = createWallTracker()
+    const remembered = confirm(tracker, wall())
+    expect(tracker.snapshot()[0].locked).toBe(false)
+    expect(tracker.update([], 5000)).toEqual([remembered])
+    expect(tracker.update([], 60000)[0]).toBe(remembered)
+    tracker.reset()
+    expect(tracker.update([], 61000)).toEqual([])
+  })
+  it('does not shrink a confirmed wall or move its pose when only a part returns', () => {
+    const tracker = createWallTracker()
+    const remembered = confirm(
+      tracker,
+      wall({ normal: new Vector3(1, 0, 1).normalize() }),
+    )
+    tracker.update([], 60000)
+    const partial = wall({
+      origin: worldPoint(remembered, { x: 0.35, y: 0.75 }, 0.025),
+      normal: remembered.normal,
+      polygon: [
+        { x: -0.25, y: 0 },
+        { x: 0.25, y: 0 },
+        { x: 0.25, y: 0.5 },
+        { x: -0.25, y: 0.5 },
+      ],
+    })
+    const found = tracker.update([partial], 61000)
+    expect(found).toHaveLength(1)
+    expect(found[0]).toBe(remembered)
+    expect(fitPlacement(found[0], { x: -0.6, y: 1 }, 0.5, 0.8)).not.toBeNull()
+  })
+  it('adds newly observed area in the confirmed coordinate system and keeps placed walls fixed', () => {
+    const tracker = createWallTracker()
+    const remembered = confirm(
+      tracker,
+      wall({ normal: new Vector3(1, 0, 1).normalize() }),
+    )
+    const extra = wall({
+      origin: worldPoint(remembered, { x: 0.8, y: 0 }, 0.025),
+      normal: remembered.normal
+        .clone()
+        .applyAxisAngle(new Vector3(0, 1, 0), 0.01),
+    })
+    const [expanded] = tracker.update([extra], 2100)
+    expect(expanded.id).toBe(remembered.id)
+    expect(expanded.origin).toEqual(remembered.origin)
+    expect(expanded.normal).toEqual(remembered.normal)
+    expect(Math.min(...expanded.polygon.map((p) => p.x))).toBeCloseTo(-1)
+    expect(Math.max(...expanded.polygon.map((p) => p.x))).toBeGreaterThan(1.7)
+    tracker.lock(expanded.id)
+    const beyond = wall({
+      origin: worldPoint(remembered, { x: 1.5, y: 0 }, 0.02),
+      normal: remembered.normal,
+    })
+    expect(tracker.update([beyond], 2800)[0]).toBe(expanded)
+    expect(tracker.update([], 60000)).toEqual([expanded])
+  })
+  it('expires provisional observations before matching and requires distinct updates', () => {
+    const tracker = createWallTracker(),
+      candidate = wall()
+    expect(tracker.update([candidate, candidate, candidate], 0)).toEqual([])
+    expect(tracker.snapshot()[0].confirmations).toBe(1)
+    tracker.update([candidate], 700)
+    expect(tracker.update([candidate], 10000)).toEqual([])
+    expect(tracker.snapshot()[0].confirmations).toBe(1)
+    expect(tracker.update([], 13000)).toEqual([])
+    expect(tracker.snapshot()).toEqual([])
+  })
+})
