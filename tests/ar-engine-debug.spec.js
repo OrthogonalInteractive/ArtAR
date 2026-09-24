@@ -104,6 +104,39 @@ function frame(status, points) {
   })
 }
 describe('XR8 debug pipeline lifecycle', () => {
+  it('removes and excludes a feature-point plane until the room is rescanned', () => {
+    engine.setDebug(true)
+    document.querySelector('.ar-canvas').getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      width: 360,
+      height: 640,
+    })
+    const points = []
+    for (let x = -1; x <= 1; x += 0.1)
+      for (let y = 0.2; y <= 2.2; y += 0.1)
+        points.push({ position: { x, y, z: 0 } })
+    const scan = () => {
+      now += 700
+      xrScene.camera.position.x += 0.04
+      xrScene.camera.updateMatrixWorld()
+      frame('NORMAL', points)
+    }
+    for (let i = 0; i < 3; i++) scan()
+    expect(engine.place()).toBe(true)
+    const id = updates.at(-1).focusedWallId
+    expect(engine.removeWall(id)).toBe(true)
+    for (let i = 0; i < 6; i++) scan()
+    expect(updates.at(-1)).toMatchObject({ placed: false, wallCount: 0 })
+    expect(updates.at(-1).debug.candidates).toEqual([])
+    expect(
+      xrScene.scene.getObjectByName('artar-wall-surfaces').children,
+    ).toHaveLength(0)
+    engine.reset()
+    for (let i = 0; i < 3; i++) scan()
+    expect(updates.at(-1).wallCount).toBe(1)
+    expect(engine.place()).toBe(true)
+  })
   it('uses observed horizontal feature points to stop extension at a ceiling', () => {
     engine.setDebug(true)
     const points = []

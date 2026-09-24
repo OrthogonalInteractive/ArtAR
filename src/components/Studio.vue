@@ -27,6 +27,7 @@ defineExpose({
   stopAR: () => engine?.stopAR(),
   setDebug: (value) => engine?.setDebug(value),
   place: () => engine?.place(),
+  removeWall: (id) => engine?.removeWall(id),
   clearPlacement: () => engine?.clearPlacement(),
   nudge: (x, y) => engine?.nudge(x, y),
   reset: () => engine?.reset(),

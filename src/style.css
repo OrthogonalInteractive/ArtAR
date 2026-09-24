@@ -1411,6 +1411,22 @@ label {
   pointer-events: auto;
   text-shadow: none;
 }
+.plane-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.plane-actions .button {
+  padding: 12px 15px;
+  min-height: 44px;
+  font-size: 13px;
+}
+.plane-actions .remove-plane {
+  color: #ffe5df;
+  border: 1px solid #f9ad9b;
+  background: #542b25ed;
+}
 .scan-reticle {
   position: absolute;
   top: 50%;

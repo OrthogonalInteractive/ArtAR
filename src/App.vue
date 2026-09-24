@@ -90,6 +90,14 @@ const showPlacement = computed(
     !state.value.dragging &&
     (!state.value.placed || (state.value.tracking && anotherWallFocused.value)),
 )
+const showRemoval = computed(
+  () =>
+    isAR.value &&
+    !mobileCollection.value &&
+    state.value.tracking &&
+    !state.value.dragging &&
+    !!state.value.focusedWallId,
+)
 const debugEnabled = ref(
   new URLSearchParams(location.search).get('debug') === '1',
 )
@@ -455,12 +463,12 @@ onBeforeUnmount(() => {
           </div>
           <ARDebug v-if="isAR && debugEnabled" :data="state.debug" />
           <span
-            v-if="showPlacement"
+            v-if="showPlacement || showRemoval"
             class="scan-reticle"
             aria-hidden="true"
           ></span>
-          <div v-if="showPlacement" class="scan-center">
-            <p>
+          <div v-if="showPlacement || showRemoval" class="scan-center">
+            <p v-if="showPlacement">
               {{
                 state.canPlace
                   ? state.placed
@@ -473,13 +481,25 @@ onBeforeUnmount(() => {
                       : '壁を映しながら端末を左右に少し移動してください'
               }}
             </p>
-            <button
-              class="button primary"
-              :disabled="!state.canPlace || !state.tracking || switching"
-              @click="studio.place()"
-            >
-              ここに飾る
-            </button>
+            <div class="plane-actions">
+              <button
+                v-if="showPlacement"
+                class="button primary"
+                :disabled="!state.canPlace || !state.tracking || switching"
+                @click="studio.place()"
+              >
+                ここに飾る
+              </button>
+              <button
+                v-if="showRemoval"
+                class="button remove-plane"
+                :disabled="switching"
+                aria-label="画面中央の平面を削除"
+                @click="studio.removeWall(state.focusedWallId)"
+              >
+                <Icon name="trash" :size="17" />平面を削除
+              </button>
+            </div>
           </div>
           <div v-if="!isAR" class="stage-caption">
             <span>THE QUIET ROOM</span><span>ベンチ幅 140 cm / 参考寸法</span>
@@ -879,7 +899,7 @@ onBeforeUnmount(() => {
         </p>
         <h3>自分の部屋でAR体験</h3>
         <p>
-          「ARで飾る」からカメラを開始し、壁を認識させてください。検出済みの範囲内で、額縁の外寸が収まるように配置します。作品を切り替えても、位置と向きを引き継ぎます。別の認識済みの壁へ画面中央を向けると「ここに飾る」で移動できます。「壁の再検出」は認識した壁と配置を消してやり直す操作です。
+          「ARで飾る」からカメラを開始し、壁を認識させてください。検出済みの範囲内で、額縁の外寸が収まるように配置します。作品を切り替えても、位置と向きを引き継ぎます。別の認識済みの壁へ画面中央を向けると「ここに飾る」で移動できます。「平面を削除」は画面中央の平面だけを除外し、そこに作品があれば、収まる最寄りの平面へ移します。移動先がなければ配置を解除します。「壁の再検出」は削除の除外も含め、認識した壁と配置を消してやり直す操作です。
         </p>
         <h3>壁と実寸の精度</h3>
         <p>

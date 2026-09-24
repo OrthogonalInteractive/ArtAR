@@ -9,6 +9,7 @@ const setDebug = vi.fn()
 const startAR = vi.fn(async () => true)
 const place = vi.fn()
 const reset = vi.fn()
+const removeWall = vi.fn()
 vi.mock('../src/ar/engine.js', () => ({
   prepareAR: vi.fn(async () => {}),
   cameraUnsupportedReason: () => null,
@@ -25,6 +26,7 @@ const Studio = defineComponent({
       view: vi.fn(),
       reset,
       place,
+      removeWall,
       dispose: vi.fn(),
     })
     onMounted(() => emit('ready'))
@@ -54,6 +56,7 @@ beforeEach(() => {
   setDebug.mockClear()
   place.mockClear()
   reset.mockClear()
+  removeWall.mockClear()
   startAR.mockReset().mockResolvedValue(true)
   setArt.mockResolvedValue(true)
 })
@@ -142,7 +145,7 @@ describe('gallery flows', () => {
       studio.vm.$emit('state', value)
       await flushPromises()
     }
-    const button = () => w.find('.scan-center button')
+    const button = () => w.find('.scan-center .primary')
     await update({
       mode: 'ar',
       tracking: true,
@@ -176,6 +179,47 @@ describe('gallery flows', () => {
       .find((b) => b.text() === '壁の再検出')
       .trigger('click')
     expect(reset).toHaveBeenCalledOnce()
+  })
+  it('deletes only the focused plane and hides the action while dragging or tracking is lost', async () => {
+    const w = create()
+    await flushPromises()
+    const studio = w.findComponent(Studio)
+    const update = async (state) => {
+      studio.vm.$emit('state', state)
+      await flushPromises()
+    }
+    const button = () => w.find('.remove-plane')
+    expect(button().exists()).toBe(false)
+    await update({
+      mode: 'ar',
+      tracking: true,
+      placed: true,
+      focusedWallId: 'wall-a',
+      placedWallId: 'wall-a',
+      canPlace: true,
+    })
+    expect(w.find('.scan-center .primary').exists()).toBe(false)
+    expect(w.find('.scan-reticle').exists()).toBe(true)
+    expect(button().text()).toBe('平面を削除')
+    expect(button().attributes('aria-label')).toBe('画面中央の平面を削除')
+    await button().trigger('click')
+    expect(removeWall).toHaveBeenLastCalledWith('wall-a')
+    expect(reset).not.toHaveBeenCalled()
+    await update({ focusedWallId: 'wall-b', canPlace: false })
+    expect(button().attributes('disabled')).toBeUndefined()
+    await button().trigger('click')
+    expect(removeWall).toHaveBeenLastCalledWith('wall-b')
+    for (const state of [
+      { dragging: true },
+      { dragging: false, tracking: false },
+      { tracking: true, focusedWallId: null },
+    ]) {
+      await update(state)
+      expect(button().exists()).toBe(false)
+    }
+    await update({ focusedWallId: 'wall-a' })
+    await w.find('.ar-mobile-bar button').trigger('click')
+    expect(button().exists()).toBe(false)
   })
   it('selects a replacement with its registered size and updates the details', async () => {
     const w = create()

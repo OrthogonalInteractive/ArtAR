@@ -31,6 +31,59 @@ const rng = () => {
   }
 }
 describe('real-size wall placement', () => {
+  it('removes one wall, suppresses its repeated observations and allows corrected planes and reset', () => {
+    const tracker = createWallTracker()
+    const first = wall()
+    const side = wall({
+      origin: new Vector3(-1, 0, 1),
+      normal: new Vector3(1, 0, 0),
+    })
+    let found
+    for (let i = 0; i < 3; i++) found = tracker.update([first, side], i * 700)
+    const id = found[0].id,
+      sideId = found[1].id
+    tracker.lock(id)
+    const surfacePolygon = [
+      { x: -3, y: -1.5 },
+      { x: 3, y: -1.5 },
+      { x: 3, y: 3.5 },
+      { x: -3, y: 3.5 },
+    ]
+    expect(tracker.remove('missing')).toBeNull()
+    expect(tracker.remove(id, { surfacePolygon }).map((w) => w.id)).toEqual([
+      sideId,
+    ])
+    const sameNewPatch = wall({ origin: new Vector3(2, 0, 0.02) })
+    const otherSide = wall({ normal: new Vector3(0, 0, -1) })
+    expect(tracker.isRejected(otherSide)).toBe(true)
+    for (let i = 3; i < 10; i++)
+      expect(
+        tracker
+          .update([first, sameNewPatch, otherSide, side], i * 700)
+          .map((w) => w.id),
+      ).toEqual([sideId])
+    expect(tracker.snapshot()).toHaveLength(1)
+    // Do not use the old broad duplicate tolerance to reject corrected surfaces.
+    const correctedAngle = wall({
+      normal: new Vector3(Math.sin(0.1), 0, Math.cos(0.1)),
+    })
+    const correctedDepth = wall({ origin: new Vector3(0, 0, -0.12) })
+    const separatePatch = wall({ origin: new Vector3(8, 0, 0) })
+    for (const candidate of [
+      correctedAngle,
+      correctedDepth,
+      separatePatch,
+      side,
+    ])
+      expect(tracker.isRejected(candidate)).toBe(false)
+    for (let i = 10; i < 13; i++)
+      found = tracker.update([correctedDepth], i * 700)
+    expect(found).toHaveLength(2)
+    tracker.reset()
+    expect(tracker.isRejected(first)).toBe(false)
+    for (let i = 13; i < 16; i++) found = tracker.update([first], i * 700)
+    expect(found).toHaveLength(1)
+  })
   it('includes the mat and frame in the physical footprint', () => {
     const d = artDimensions(seedArtworks[0])
     expect(d.width).toBeCloseTo(0.62)

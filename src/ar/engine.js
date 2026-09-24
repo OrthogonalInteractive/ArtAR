@@ -535,6 +535,8 @@ export function createExperience({ canvas, onState, onError }) {
         horizontal.push(...(reality.nativeBoundaries || []))
         // Prefer native polygons to a second estimate of the same plane.
         for (const native of reality.nativeWalls || []) {
+          // An excluded native plane must not suppress a corrected depth estimate.
+          if (tracker.isRejected(native)) continue
           for (let i = detected.length - 1; i >= 0; i--) {
             const estimate = detected[i]
             if (wallMatch(native, estimate)) detected.splice(i, 1)
@@ -546,6 +548,7 @@ export function createExperience({ canvas, onState, onError }) {
       detectionMs = performance.now() - startedAt
       detectionAt = now
       diagnostics = report
+      filterRejectedCandidates()
       const found = tracker.update(detected, now, {
         cameraPosition: camera.position,
         associationSurfaces: walls,
@@ -611,6 +614,78 @@ export function createExperience({ canvas, onState, onError }) {
       })
       notify()
     }
+  }
+  function filterRejectedCandidates() {
+    if (diagnostics)
+      diagnostics.candidates = diagnostics.candidates.filter(
+        (candidate) => !tracker.isRejected(candidate),
+      )
+  }
+  function removeWall(id) {
+    // Use the highlighted ID supplied by the UI; never silently delete a
+    // different plane if the camera focus changed before the click arrived.
+    if (
+      mode !== 'ar' ||
+      !tracking ||
+      dragPointer !== null ||
+      !id ||
+      candidateWall?.id !== id
+    )
+      return false
+    const removed = walls.find((w) => w.id === id)
+    if (!removed) return false
+    const previous = selectedWall && worldPoint(selectedWall, placement)
+    const moving = selectedWall?.id === id
+    const remaining = tracker.remove(id, removed)
+    if (!remaining) return false
+    walls = expansion.update(remaining, boundaries)
+    if (moving) {
+      let nearest
+      for (const wall of walls) {
+        const fit = art && constrain(wall, localPoint(wall, previous))
+        if (!fit) continue
+        const distance = worldPoint(wall, fit).distanceToSquared(previous)
+        if (!nearest || distance < nearest.distance)
+          nearest = { wall, fit, distance }
+      }
+      selectedWall = nearest?.wall || null
+      if (nearest) {
+        placement = { x: nearest.fit.x, y: nearest.fit.y }
+        tracker.lock(selectedWall.id)
+      }
+    } else if (selectedWall) {
+      selectedWall = walls.find((w) => w.id === selectedWall.id)
+      const fit = selectedWall && constrain(selectedWall, placement)
+      if (fit) placement = { x: fit.x, y: fit.y }
+      else selectedWall = null
+    }
+    if (selectedWall) applyPosition()
+    else if (model) model.visible = false
+    candidateWall = null
+    rayPoint = null
+    updateFocus()
+    updateGuide()
+    filterRejectedCandidates()
+    if (debugEnabled) {
+      debugLayer?.updateWalls(
+        walls,
+        diagnostics?.candidates || [],
+        selectedWall?.id,
+      )
+      latestDebug = debugSummary({
+        ...latestDebug,
+        diagnostics,
+        walls,
+        boundaries,
+        tracker: tracker.snapshot(),
+        hit: candidateWall,
+        fits:
+          candidateWall && art ? !!constrain(candidateWall, rayPoint) : null,
+        tracking,
+      })
+    }
+    notify()
+    return true
   }
   function startAR(host) {
     if (mode === 'ar' || disposed) return
@@ -826,6 +901,7 @@ export function createExperience({ canvas, onState, onError }) {
     setArt,
     startAR,
     stopAR,
+    removeWall,
     setDebug(enabled) {
       debugEnabled = !!enabled
       lastDebugUpdate = 0

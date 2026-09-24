@@ -142,6 +142,7 @@ function frame({
   depthMeters = 2,
   native = false,
   nativeSize = 1,
+  extraPlanes = [],
   ceilingHeight = null,
   floorHeight = null,
   hits = [],
@@ -209,7 +210,11 @@ function frame({
           ]
         : []
     },
-    detectedPlanes: new Set([...(native ? [plane] : []), ...horizontal]),
+    detectedPlanes: new Set([
+      ...(native ? [plane] : []),
+      ...extraPlanes,
+      ...horizontal,
+    ]),
     getPose: (space) => ({
       transform: {
         matrix: space.matrix.elements,
@@ -220,6 +225,147 @@ function frame({
 }
 
 describe('Android WebXR routing and lifecycle', () => {
+  const nativePlane = (x, z, yaw, width = 1, height = 1) => ({
+    orientation: 'vertical',
+    planeSpace: {
+      matrix: new Matrix4()
+        .makeRotationY(yaw)
+        .multiply(new Matrix4().makeRotationX(Math.PI / 2))
+        .setPosition(x, 1.5, z),
+    },
+    polygon: [
+      { x: -width, y: 0, z: -height },
+      { x: width, y: 0, z: -height },
+      { x: width, y: 0, z: height },
+      { x: -width, y: 0, z: height },
+    ],
+  })
+  it('moves artwork from a deleted wall to the nearest fitting wall and retains the other walls', async () => {
+    engine.setDebug(true)
+    await start()
+    const extraPlanes = [
+      nativePlane(-1.2, -1, Math.PI / 2),
+      nativePlane(2, -1, -Math.PI / 2),
+    ]
+    for (let i = 0; i < 3; i++)
+      frame({ depth: false, native: true, extraPlanes })
+    expect(states.at(-1).wallCount).toBe(3)
+    const id = states.at(-1).focusedWallId
+    expect(engine.place()).toBe(true)
+    const scene = renderer.render.mock.lastCall[0],
+      model = scene.getObjectByName('test-artwork')
+    const before = model.position.clone()
+    expect(engine.removeWall('missing')).toBe(false)
+    expect(engine.removeWall(id)).toBe(true)
+    expect(states.at(-1)).toMatchObject({ placed: true, wallCount: 2 })
+    expect(states.at(-1).placedWallId).not.toBe(id)
+    expect(model.position.x).toBeCloseTo(-1.192)
+    expect(model.position.y).toBeCloseTo(before.y)
+    expect(model.position.z).toBeCloseTo(-2)
+    expect(
+      new Vector3(0, 0, 1).applyQuaternion(model.quaternion).x,
+    ).toBeCloseTo(1)
+    expect(model.scale.toArray()).toEqual([1, 1, 1])
+    expect(scene.getObjectByName(`surface-${id}`)).toBeUndefined()
+    expect(states.at(-1).debug.wallCount).toBe(2)
+    for (let i = 0; i < 6; i++)
+      frame({ depth: false, native: true, extraPlanes })
+    expect(states.at(-1).wallCount).toBe(2)
+    expect(model.position.x).toBeCloseTo(-1.192)
+  })
+  it('deletes an unoccupied focused wall without moving the artwork on another wall', async () => {
+    await start()
+    for (let i = 0; i < 3; i++) frame()
+    expect(engine.place()).toBe(true)
+    const original = states.at(-1).placedWallId
+    const scene = renderer.render.mock.lastCall[0],
+      model = scene.getObjectByName('test-artwork')
+    const position = model.position.clone(),
+      rotation = model.quaternion.clone()
+    for (let i = 0; i < 3; i++) frame({ yaw: Math.PI / 2 })
+    const side = states.at(-1).focusedWallId
+    expect(engine.removeWall(original)).toBe(false) // It is no longer highlighted.
+    expect(engine.removeWall(side)).toBe(true)
+    expect(states.at(-1)).toMatchObject({
+      placedWallId: original,
+      wallCount: 1,
+    })
+    expect(model.position).toEqual(position)
+    expect(model.quaternion.toArray()).toEqual(rotation.toArray())
+  })
+  it.each([true, false])(
+    'skips a nearer plane that cannot fit the frame (larger alternative: %s)',
+    async (hasAlternative) => {
+      await start()
+      const extraPlanes = [nativePlane(-1.2, -1, Math.PI / 2, 0.25)]
+      if (hasAlternative) extraPlanes.push(nativePlane(0, -6.5, 0, 3))
+      for (let i = 0; i < 3; i++)
+        frame({ depth: false, native: true, nativeSize: 3, extraPlanes })
+      expect(await engine.setArt({ ...seedArtworks[0], widthCm: 480 })).toBe(
+        true,
+      )
+      expect(engine.place()).toBe(true)
+      const scene = renderer.render.mock.lastCall[0],
+        model = scene.getObjectByName('test-artwork')
+      expect(engine.removeWall(states.at(-1).focusedWallId)).toBe(true)
+      expect(states.at(-1).placed).toBe(hasAlternative)
+      expect(model.visible).toBe(hasAlternative)
+      if (hasAlternative) expect(model.position.z).toBeCloseTo(-6.492)
+    },
+  )
+  it('removes a plane before placement without placing artwork automatically', async () => {
+    await start()
+    const extraPlanes = [nativePlane(-1.2, -1, Math.PI / 2)]
+    for (let i = 0; i < 3; i++)
+      frame({ depth: false, native: true, extraPlanes })
+    expect(engine.removeWall(states.at(-1).focusedWallId)).toBe(true)
+    expect(states.at(-1)).toMatchObject({ placed: false, wallCount: 1 })
+  })
+  it('lets corrected depth replace a deleted native plane even if the native API keeps returning it', async () => {
+    await start()
+    for (let i = 0; i < 3; i++) frame({ native: true })
+    expect(engine.removeWall(states.at(-1).focusedWallId)).toBe(true)
+    for (let i = 0; i < 3; i++) frame({ native: true, depthMeters: 2.2 })
+    expect(states.at(-1).wallCount).toBe(1)
+    expect(engine.place()).toBe(true)
+    expect(states.at(-1).wallSource).toBe('webxr-depth')
+    const scene = renderer.render.mock.lastCall[0]
+    expect(scene.getObjectByName('test-artwork').position.z).toBeCloseTo(-2.192)
+  })
+  it.each([
+    { source: 'native', observation: { depth: false, native: true } },
+    { source: 'depth', observation: { depth: true } },
+  ])(
+    'clears placement when deleting the only $source wall and excludes it until reset',
+    async ({ observation }) => {
+      engine.setDebug(true)
+      await start()
+      for (let i = 0; i < 3; i++) frame(observation)
+      expect(engine.place()).toBe(true)
+      const id = states.at(-1).focusedWallId
+      const scene = renderer.render.mock.lastCall[0],
+        model = scene.getObjectByName('test-artwork')
+      frame({ ...observation, tracked: false })
+      expect(engine.removeWall(id)).toBe(false)
+      frame(observation)
+      expect(engine.removeWall(id)).toBe(true)
+      expect(states.at(-1)).toMatchObject({
+        placed: false,
+        placedWallId: null,
+        wallCount: 0,
+        canPlace: false,
+      })
+      expect(model.visible).toBe(false)
+      for (let i = 0; i < 6; i++) frame(observation)
+      expect(states.at(-1).wallCount).toBe(0)
+      expect(states.at(-1).debug.trackedWalls).toEqual([])
+      expect(states.at(-1).debug.candidates).toEqual([])
+      engine.reset()
+      for (let i = 0; i < 3; i++) frame(observation)
+      expect(states.at(-1).wallCount).toBe(1)
+      expect(engine.place()).toBe(true)
+    },
+  )
   it('places beyond a small patch, refits below a later ceiling and clears bounds on rescan', async () => {
     engine.setDebug(true)
     await start()

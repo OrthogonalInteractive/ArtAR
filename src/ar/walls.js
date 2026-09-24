@@ -507,9 +507,31 @@ function stableObservation(anchor, observed) {
 /** Confirm across updates; retain confirmed walls until the AR session/reset ends. */
 export function createWallTracker() {
   let entries = [],
+    rejected = [],
     counter = 0
   const confirmed = (entry) => entry.confirmed
+  const currentWalls = () => entries.filter(confirmed).map((e) => e.wall)
+  const isRejected = (candidate) => {
+    if (!rejected.length) return false
+    const observed = candidate.plane ? candidate : makeWall(candidate)
+    return rejected.some((wall) => {
+      // Detectors face normals toward the viewer; looking from the other side
+      // must not bring a removed geometric plane back.
+      const aligned =
+        wall.normal.dot(observed.normal) < 0
+          ? makeWall({
+              ...observed,
+              normal: observed.normal.clone().negate(),
+              polygon: observed.polygon.map((p) => ({ x: -p.x, y: p.y })),
+            })
+          : observed
+      return (
+        stableObservation(wall, aligned) && wallMatch(wall, aligned) === 'same'
+      )
+    })
+  }
   return {
+    isRejected,
     update(candidates, now, { cameraPosition, associationSurfaces = [] } = {}) {
       // Only provisional candidates expire. Apply expiry before matching so old
       // one-off observations cannot eventually accumulate into a confirmed wall.
@@ -521,6 +543,7 @@ export function createWallTracker() {
           (b.pointCount || 0) - (a.pointCount || 0),
       )
       for (const candidate of observations) {
+        if (isRejected(candidate)) continue
         const matches = entries
           .map((entry) => {
             let match = wallMatch(entry.wall, candidate)
@@ -618,7 +641,7 @@ export function createWallTracker() {
       }
       for (const entry of entries)
         if (!confirmed(entry) && !seenThisUpdate.has(entry)) entry.seen = 0
-      return entries.filter(confirmed).map((e) => e.wall)
+      return currentWalls()
     },
     snapshot() {
       return entries.map((e) => ({
@@ -637,8 +660,23 @@ export function createWallTracker() {
       const e = entries.find((e) => e.wall.id === id)
       if (e) e.locked = true
     },
+    remove(id, surface) {
+      const entry = entries.find((e) => e.wall.id === id && confirmed(e))
+      if (!entry) return null
+      // Remember this finite surface, not an infinite plane or the broad
+      // duplicate tolerance: corrected angles/depths must remain detectable.
+      rejected.push({
+        ...entry.wall,
+        polygon: surface?.surfacePolygon || entry.wall.polygon,
+      })
+      entries = entries.filter(
+        (e) => e !== entry && (confirmed(e) || !isRejected(e.wall)),
+      )
+      return currentWalls()
+    },
     reset() {
       entries = []
+      rejected = []
       counter = 0
     },
   }
