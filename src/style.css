@@ -1397,7 +1397,7 @@ label {
 }
 .scan-center {
   position: absolute;
-  inset: 30% 20px auto;
+  inset: auto 20px calc(160px + env(safe-area-inset-bottom));
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -1412,6 +1412,11 @@ label {
   text-shadow: none;
 }
 .scan-reticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
   width: 90px;
   height: 90px;
   display: block;
@@ -2517,7 +2522,9 @@ label {
     max-width: calc(50vw - 32px);
   }
   .scan-center {
-    inset: 22% 16px auto;
+    left: auto;
+    right: 16px;
+    width: min(270px, 40vw);
     gap: 8px;
   }
   .scan-reticle {

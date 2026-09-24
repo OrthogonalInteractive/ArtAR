@@ -53,6 +53,14 @@ describe('wall orientation colors', () => {
       fill('a').material.color.getHex(),
       fill('b').material.color.getHex(),
     ]).toEqual(colors)
+    feedback.update([a, b], { selectedId: 'b', candidateId: 'a' })
+    expect(fill('a').material.opacity).toBeGreaterThan(
+      fill('b').material.opacity,
+    )
+    expect([
+      fill('a').material.color.getHex(),
+      fill('b').material.color.getHex(),
+    ]).toEqual(colors)
     feedback.update([])
     feedback.update([b, a])
     expect([

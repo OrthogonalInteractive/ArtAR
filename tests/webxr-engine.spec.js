@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   Matrix4,
+  Vector3,
   PerspectiveCamera,
   Group,
   Mesh,
@@ -142,8 +143,9 @@ function frame({
   native = false,
   hits = [],
   yaw = 0,
+  elapsed = 700,
 } = {}) {
-  now += 700
+  now += elapsed
   const camera = new PerspectiveCamera(60, 360 / 640, 0.05, 30)
   const view = {
     projectionMatrix: camera.projectionMatrix.elements,
@@ -322,6 +324,61 @@ describe('Android WebXR routing and lifecycle', () => {
     engine.reset()
     expect(surfaces.children).toHaveLength(0)
     expect(states.at(-1)).toMatchObject({ placed: false, artHint: null })
+  })
+  it('moves between retained walls using the current camera focus without a reset', async () => {
+    await start()
+    for (let i = 0; i < 3; i++) frame()
+    const front = states.at(-1).focusedWallId
+    expect(engine.place()).toBe(true)
+    expect(states.at(-1).placedWallId).toBe(front)
+    const scene = renderer.render.mock.lastCall[0]
+    const model = scene.getObjectByName('test-artwork')
+    const initialPosition = model.position.clone()
+    for (let i = 0; i < 3; i++) frame({ yaw: Math.PI / 2 })
+    const side = states.at(-1).focusedWallId
+    expect(side).not.toBe(front)
+    expect(states.at(-1)).toMatchObject({
+      placedWallId: front,
+      canPlace: true,
+      wallCount: 2,
+    })
+    expect(model.position).toEqual(initialPosition)
+    expect(engine.place()).toBe(true)
+    expect(states.at(-1)).toMatchObject({
+      placedWallId: side,
+      focusedWallId: side,
+      wallCount: 2,
+    })
+    expect(model.position.x).toBeCloseTo(-1.992)
+    expect(
+      new Vector3(0, 0, 1).applyQuaternion(model.quaternion).x,
+    ).toBeCloseTo(1)
+    // Camera aiming must update before the next 650ms wall-detection cycle.
+    frame({ depth: false, yaw: 0, elapsed: 100 })
+    expect(states.at(-1)).toMatchObject({
+      placedWallId: side,
+      focusedWallId: front,
+      canPlace: true,
+      wallCount: 2,
+    })
+    expect(engine.place()).toBe(true)
+    expect(model.position).toEqual(initialPosition)
+    frame({ depth: false, yaw: Math.PI, elapsed: 100 })
+    expect(states.at(-1)).toMatchObject({
+      focusedWallId: null,
+      placedWallId: front,
+      canPlace: false,
+    })
+    expect(engine.place()).toBe(false)
+    expect(model.position).toEqual(initialPosition)
+    engine.reset()
+    expect(states.at(-1)).toMatchObject({
+      focusedWallId: null,
+      placedWallId: null,
+      placed: false,
+      wallCount: 0,
+      canPlace: false,
+    })
   })
   it('never moves placed art onto a duplicate depth layer in front of its wall', async () => {
     await start()

@@ -127,7 +127,15 @@ export function createExperience({ canvas, onState, onError }) {
       wallSource: selectedWall?.source,
       dragging: dragPointer !== null,
       artHint: artworkHint(),
-      canPlace: !!candidateWall,
+      focusedWallId: tracking ? candidateWall?.id || null : null,
+      placedWallId: selectedWall?.id || null,
+      canPlace: !!(
+        tracking &&
+        candidateWall &&
+        rayPoint &&
+        art &&
+        constrain(candidateWall, rayPoint)
+      ),
       debugEnabled,
       debug: debugEnabled ? latestDebug : null,
       ...extra,
@@ -463,6 +471,18 @@ export function createExperience({ canvas, onState, onError }) {
     arCanvas.width = window.innerWidth
     arCanvas.height = window.innerHeight
   }
+  function updateFocus() {
+    if (mode !== 'ar' || !tracking || !arCanvas) return
+    const viewport = arCanvas.getBoundingClientRect()
+    const hit = pick({
+      clientX: viewport.left + viewport.width / 2,
+      clientY: viewport.top + viewport.height / 2,
+    })
+    const changed = candidateWall?.id !== hit?.wall.id
+    candidateWall = hit?.wall
+    rayPoint = hit?.local
+    if (changed) updateGuide()
+  }
   function updateTracking(reality) {
     if (!reality || !running || !camera) return
     xrCapabilities = reality.webxr || null
@@ -522,13 +542,6 @@ export function createExperience({ canvas, onState, onError }) {
       )
       if (selectedWall && !walls.some((w) => w.id === selectedWall.id))
         walls.push(selectedWall)
-      const viewport = arCanvas.getBoundingClientRect()
-      const hit = pick({
-        clientX: viewport.left + viewport.width / 2,
-        clientY: viewport.top + viewport.height / 2,
-      })
-      candidateWall = hit?.wall
-      rayPoint = hit?.local
       updateGuide()
       if (debugEnabled)
         debugLayer?.updateWalls(
@@ -536,11 +549,13 @@ export function createExperience({ canvas, onState, onError }) {
           diagnostics?.candidates || [],
           selectedWall?.id,
         )
-      notify({ pointCount: reality.worldPoints?.length || 0 })
     }
+    // Aiming is independent of the slower wall-detection cycle. Retained walls
+    // are valid targets even when no new depth/plane observation arrives.
+    updateFocus()
     if (now - lastHintUpdate >= 80) {
       lastHintUpdate = now
-      onState({ artHint: artworkHint() })
+      notify({ pointCount: reality.worldPoints?.length || 0 })
     }
     // HUD/point uploads run at 4 Hz; the camera renders their world positions every frame.
     if (debugEnabled && now - lastDebugUpdate >= 250) {
@@ -818,6 +833,7 @@ export function createExperience({ canvas, onState, onError }) {
       return mode
     },
     place() {
+      updateFocus()
       if (candidateWall && rayPoint && tracking)
         return placeOn(candidateWall, rayPoint)
       return false
@@ -848,7 +864,9 @@ export function createExperience({ canvas, onState, onError }) {
         })
         if (model) model.visible = false
         updateGuide()
-        notify({ message: '別の壁にカメラを向けてください。' })
+        notify({
+          message: '壁を再検出します。カメラをゆっくり動かしてください。',
+        })
       } else {
         placeOn(walls[0], { x: 0, y: 1.65 })
       }

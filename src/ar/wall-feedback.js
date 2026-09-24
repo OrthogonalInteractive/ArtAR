@@ -126,7 +126,8 @@ export function createWallFeedback(scene) {
           entries.set(wall.id, entry)
         }
         const selected = wall.id === selectedId
-        const active = selected || (!selectedId && wall.id === candidateId)
+        const focused = wall.id === candidateId
+        const active = selected || (!selectedId && focused)
         entry.fill.material.opacity = dragging
           ? selected
             ? 0.34
@@ -134,13 +135,23 @@ export function createWallFeedback(scene) {
           : selectedId
             ? selected
               ? 0.09
-              : 0.06
+              : focused
+                ? 0.22
+                : 0.06
             : active
               ? 0.26
               : 0.2
-        entry.grid.material.opacity = dragging ? 0.75 : selectedId ? 0.2 : 0.5
+        entry.grid.material.opacity = dragging
+          ? 0.75
+          : selectedId && (!focused || selected)
+            ? 0.2
+            : 0.5
         entry.rim.material.opacity =
-          dragging || !selectedId ? 0.95 : selected ? 0.6 : 0.3
+          dragging || !selectedId || (focused && !selected)
+            ? 0.95
+            : selected
+              ? 0.6
+              : 0.3
       }
       root.visible = tracking
     },

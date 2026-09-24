@@ -7,6 +7,8 @@ import { defaults } from '../src/data/storage.js'
 const setArt = vi.fn(async () => true)
 const setDebug = vi.fn()
 const startAR = vi.fn(async () => true)
+const place = vi.fn()
+const reset = vi.fn()
 vi.mock('../src/ar/engine.js', () => ({
   prepareAR: vi.fn(async () => {}),
   cameraUnsupportedReason: () => null,
@@ -21,7 +23,8 @@ const Studio = defineComponent({
       guides: vi.fn(),
       tone: vi.fn(),
       view: vi.fn(),
-      reset: vi.fn(),
+      reset,
+      place,
       dispose: vi.fn(),
     })
     onMounted(() => emit('ready'))
@@ -49,6 +52,8 @@ beforeEach(() => {
   localStorage.clear()
   setArt.mockClear()
   setDebug.mockClear()
+  place.mockClear()
+  reset.mockClear()
   startAR.mockReset().mockResolvedValue(true)
   setArt.mockResolvedValue(true)
 })
@@ -114,7 +119,7 @@ describe('gallery flows', () => {
         .find('.ar-mobile-bar')
         .findAll('button')
         .map((b) => b.text()),
-    ).toEqual(['作品を切り替え', '別の壁に飾る'])
+    ).toEqual(['作品を切り替え', '壁の再検出'])
     expect(w.text()).not.toMatch(/実寸補正|実測してサイズ|飾れる範囲を指定/)
     studio.vm.$emit('state', { dragging: true })
     await flushPromises()
@@ -128,6 +133,49 @@ describe('gallery flows', () => {
     await flushPromises()
     expect(w.find('.art-drag-hint').exists()).toBe(false)
     expect(w.find('.ar-move-instruction').text()).toContain('壁を再認識')
+  })
+  it('re-enables placement only for another focused wall without rescanning', async () => {
+    const w = create()
+    await flushPromises()
+    const studio = w.findComponent(Studio)
+    const update = async (value) => {
+      studio.vm.$emit('state', value)
+      await flushPromises()
+    }
+    const button = () => w.find('.scan-center button')
+    await update({
+      mode: 'ar',
+      tracking: true,
+      placed: false,
+      focusedWallId: 'wall-a',
+      placedWallId: null,
+      canPlace: true,
+    })
+    expect(button().attributes('disabled')).toBeUndefined()
+    await update({ placed: true, placedWallId: 'wall-a' })
+    expect(button().exists()).toBe(false)
+    await update({ focusedWallId: 'wall-b' })
+    expect(button().text()).toBe('ここに飾る')
+    expect(button().attributes('disabled')).toBeUndefined()
+    await button().trigger('click')
+    expect(place).toHaveBeenCalledOnce()
+    expect(reset).not.toHaveBeenCalled()
+    await update({ placedWallId: 'wall-b' })
+    expect(button().exists()).toBe(false)
+    await update({ focusedWallId: 'wall-a', canPlace: false })
+    expect(button().attributes('disabled')).toBeDefined()
+    expect(w.find('.scan-center').text()).toContain('収まりません')
+    await update({ canPlace: true, dragging: true })
+    expect(button().exists()).toBe(false)
+    await update({ dragging: false, tracking: false })
+    expect(button().exists()).toBe(false)
+    await update({ tracking: true, focusedWallId: null, canPlace: false })
+    expect(button().exists()).toBe(false)
+    await w
+      .findAll('.ar-mobile-bar button')
+      .find((b) => b.text() === '壁の再検出')
+      .trigger('click')
+    expect(reset).toHaveBeenCalledOnce()
   })
   it('selects a replacement with its registered size and updates the details', async () => {
     const w = create()

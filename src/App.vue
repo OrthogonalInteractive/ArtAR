@@ -50,6 +50,9 @@ const studio = ref(),
     tracking: true,
     dragging: false,
     artHint: null,
+    focusedWallId: null,
+    placedWallId: null,
+    canPlace: false,
   })
 const dialog = ref(null),
   toast = ref(props.loadError || initial.error || ''),
@@ -72,6 +75,21 @@ const shareId = ref(shareCollections.value[0]?.id || ''),
   mobileCollection = ref(false)
 const shareLink = computed(() => collectionUrl(shareId.value, location.href))
 const isAR = computed(() => state.value.mode === 'ar')
+const anotherWallFocused = computed(
+  () =>
+    !!(
+      state.value.placed &&
+      state.value.focusedWallId &&
+      state.value.focusedWallId !== state.value.placedWallId
+    ),
+)
+const showPlacement = computed(
+  () =>
+    isAR.value &&
+    !mobileCollection.value &&
+    !state.value.dragging &&
+    (!state.value.placed || (state.value.tracking && anotherWallFocused.value)),
+)
 const debugEnabled = ref(
   new URLSearchParams(location.search).get('debug') === '1',
 )
@@ -436,20 +454,28 @@ onBeforeUnmount(() => {
             <span v-else class="scale-chip">1:1<span>実寸比率</span></span>
           </div>
           <ARDebug v-if="isAR && debugEnabled" :data="state.debug" />
-          <div v-if="isAR && !state.placed" class="scan-center">
-            <span class="scan-reticle"></span>
+          <span
+            v-if="showPlacement"
+            class="scan-reticle"
+            aria-hidden="true"
+          ></span>
+          <div v-if="showPlacement" class="scan-center">
             <p>
               {{
                 state.canPlace
-                  ? '色のついた壁に飾れます'
-                  : state.backend === 'webxr'
-                    ? '壁を上下・左右にゆっくり映してください'
-                    : '壁の模様や角にカメラを向けてください'
+                  ? state.placed
+                    ? 'この壁へ作品を移せます'
+                    : '色のついた壁に飾れます'
+                  : state.focusedWallId
+                    ? 'この壁には作品が収まりません'
+                    : state.backend === 'webxr'
+                      ? '壁を上下・左右にゆっくり映してください'
+                      : '壁の模様や角にカメラを向けてください'
               }}
             </p>
             <button
               class="button primary"
-              :disabled="!state.canPlace || !state.tracking"
+              :disabled="!state.canPlace || !state.tracking || switching"
               @click="studio.place()"
             >
               ここに飾る
@@ -511,20 +537,24 @@ onBeforeUnmount(() => {
                   ? '壁を再認識しています'
                   : state.dragging
                     ? '移動中 · 指を離して配置'
-                    : state.placed
-                      ? '作品をドラッグして移動'
-                      : state.wallCount
-                        ? '色のついた壁をタップして配置'
-                        : '壁をゆっくり映してください'
+                    : anotherWallFocused && state.canPlace
+                      ? '別の壁へ移せます'
+                      : state.placed
+                        ? '作品をドラッグして移動'
+                        : state.wallCount
+                          ? '色のついた壁をタップして配置'
+                          : '壁をゆっくり映してください'
               }}</strong>
               <span>{{
                 !state.tracking
                   ? '端末をゆっくり動かしてください'
                   : state.dragging
                     ? '色のついた面に沿って動かせます'
-                    : state.placed
-                      ? '作品に触れたまま、上下・左右へ'
-                      : '壁の向きごとに色分けします'
+                    : anotherWallFocused && state.canPlace
+                      ? '「ここに飾る」でこの壁へ移動'
+                      : state.placed
+                        ? '作品に触れたまま、上下・左右へ'
+                        : '壁の向きごとに色分けします'
               }}</span>
             </div>
           </div>
@@ -548,7 +578,7 @@ onBeforeUnmount(() => {
             ></button>
           </div>
           <button v-else class="text-button" @click="studio.reset()">
-            壁を探し直す
+            壁の再検出
           </button>
         </div>
         <div class="experience-banner">
@@ -723,7 +753,7 @@ onBeforeUnmount(() => {
         <Icon name="grid" :size="17" />作品を切り替え
       </button>
       <button class="button secondary" @click="studio.reset()">
-        <Icon name="reset" :size="17" />別の壁に飾る
+        <Icon name="reset" :size="17" />壁の再検出
       </button>
     </div>
     <Admin
@@ -847,7 +877,7 @@ onBeforeUnmount(() => {
         </p>
         <h3>自分の部屋でAR体験</h3>
         <p>
-          「ARで飾る」からカメラを開始し、壁を認識させてください。検出済みの範囲内で、額縁の外寸が収まるように配置します。作品を切り替えても、位置と向きを引き継ぎます。
+          「ARで飾る」からカメラを開始し、壁を認識させてください。検出済みの範囲内で、額縁の外寸が収まるように配置します。作品を切り替えても、位置と向きを引き継ぎます。別の認識済みの壁へ画面中央を向けると「ここに飾る」で移動できます。「壁の再検出」は認識した壁と配置を消してやり直す操作です。
         </p>
         <h3>壁と実寸の精度</h3>
         <p>
