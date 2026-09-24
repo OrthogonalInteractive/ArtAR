@@ -252,7 +252,7 @@ describe('overlapping wall observations', () => {
     expect(
       tracker.update([wall({ origin: new Vector3(0, 0, 0.2) })], 1400),
     ).toEqual([])
-    expect(tracker.snapshot()[0].confirmations).toBe(1)
+    expect(tracker.snapshot()[0].confirmations).toBe(0)
   })
   it('prefers a native plane over a overlapping depth estimate regardless of input order', () => {
     const native = wall({ source: 'webxr-plane' })

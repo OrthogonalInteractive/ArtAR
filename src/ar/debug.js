@@ -18,6 +18,8 @@ export const CANDIDATE_REASONS = Object.freeze({
   narrow: '幅45cm未満',
   short: '高さ40cm未満',
   noisy: '面からのばらつき大',
+  'weak-consensus': '同じ面の点の割合が不足',
+  'sparse-surface': '面の内部まで点が広がっていない',
 })
 
 export function detectionMessage({
@@ -27,6 +29,7 @@ export function detectionMessage({
   walls = [],
   hit = null,
   fits = null,
+  tracker = [],
 }) {
   if (trackingStatus === 'INITIALIZING' || trackingReason === 'INITIALIZING')
     return '空間を初期化しています。カメラ本体をゆっくり移動してください。'
@@ -41,13 +44,15 @@ export function detectionMessage({
     if (fits === null) return '壁を認識しました。作品の読み込みを待っています。'
     return '画面中央の壁に配置できます。'
   }
+  if (tracker.some((wall) => wall.needsViewpoint))
+    return '同じ壁か確認中。端末の位置を左右に少し動かしてください。'
   return (
     {
       'few-points': `処理対象の点が${WALL_DETECTION_LIMITS.minPoints}点未満です。`,
       'no-vertical-plane': '垂直な平面候補をまだ推定できません。',
       'few-inliers': '同じ垂直面に集まる点が20点に届いていません。',
       rejected:
-        '平面候補はありますが、広さ・ばらつきの条件を満たしていません。',
+        '平面候補はありますが、点の広がり・割合・ばらつきの条件を満たしていません。',
       detected: '壁候補を検出。複数回の一致を待っています。',
     }[diagnostics.status] || '壁の判定を待っています。'
   )
@@ -80,6 +85,8 @@ export function debugSummary({
     wallCount: walls.length,
     visible: tracking,
     bestInliers: diagnostics?.bestInliers || 0,
+    requiredPoints:
+      diagnostics?.requiredPoints || WALL_DETECTION_LIMITS.minPoints,
     status: tracking ? diagnostics?.status || 'waiting' : 'tracking-paused',
     hitWall: hit?.id || null,
     fits,
@@ -92,6 +99,7 @@ export function debugSummary({
       walls,
       hit,
       fits,
+      tracker,
     }),
     candidates: (diagnostics?.candidates || []).map((c, i) => ({
       number: i + 1,
@@ -99,6 +107,7 @@ export function debugSummary({
       widthCm: Math.round(c.width * 100),
       heightCm: Math.round(c.height * 100),
       residualMm: Math.round(c.residual * 1000),
+      filledCells: c.filledCells,
       accepted: c.accepted,
       reasons: [...c.reasons],
     })),

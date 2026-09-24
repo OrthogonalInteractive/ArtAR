@@ -70,7 +70,7 @@ async function copy() {
       </div>
       <div>
         <dt>最大面内点</dt>
-        <dd>{{ data.bestInliers }} / 20</dd>
+        <dd>{{ data.bestInliers }} / {{ data.requiredPoints }}</dd>
       </div>
     </dl>
     <p class="debug-message">{{ data.message }}</p>
@@ -103,6 +103,9 @@ async function copy() {
             >{{ candidate.widthCm }} × {{ candidate.heightCm }} cm / ばらつき
             {{ candidate.residualMm }} mm</span
           >
+          <span v-if="candidate.filledCells !== undefined"
+            >面内の広がり：{{ candidate.filledCells }} / 9区画</span
+          >
           <span>{{
             candidate.accepted
               ? '形状条件を通過'
@@ -115,15 +118,20 @@ async function copy() {
         <li v-for="wall in data.trackedWalls" :key="wall.id">
           {{ wall.id }}：{{
             wall.confirmed ? '認識済み' : `一致 ${wall.confirmations} / 3`
+          }}{{ wall.needsViewpoint ? '・端末の移動待ち' : ''
           }}{{ wall.locked ? '・固定中' : '' }}
         </li>
       </ul>
       <p>
-        同一面20点以上 / 幅45cm・高さ40cm以上 / ばらつき28mm未満 /
-        3回一致。点群は7m未満・最大800点。寸法は補正前の推定値です。
+        同一面20点以上かつ対象点の12%以上 / 幅45cm・高さ40cm以上 /
+        面内9区画のうち6区画以上に点が分布 / ばらつき28mm未満 /
+        位置4cm・向き3度以内で3回連続一致。点群は7m未満・最大800点。寸法は補正前の推定値です。
       </p>
       <p v-if="data.backend === 'webxr'">
         ネイティブ面は幅45cm・高さ40cm以上、3回一致で採用。深度・ヒットテストの点群には上記の平面判定も行います。Depthがない場合は、壁の上下・左右を映して観測範囲を広げてください。
+      </p>
+      <p v-else>
+        空間特徴点からの壁は、端末が6cm以上移動しても位置・向きが一致することを確認して採用します。
       </p>
       <p>
         色の面は観測された範囲です。物理的な壁の端や障害物を示すものではありません。線の矢印は壁の表向きです。

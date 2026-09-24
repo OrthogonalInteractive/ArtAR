@@ -494,6 +494,7 @@ export function createExperience({ canvas, onState, onError }) {
     const now = performance.now()
     if (!tracking) {
       // Do not leave an old center hit or diagnostic pretending tracking is live.
+      tracker.update([], now)
       candidateWall = null
       rayPoint = null
       diagnostics = null
@@ -533,7 +534,9 @@ export function createExperience({ canvas, onState, onError }) {
       detectionMs = performance.now() - startedAt
       detectionAt = now
       diagnostics = report
-      const found = tracker.update(detected, now)
+      const found = tracker.update(detected, now, {
+        cameraPosition: camera.position,
+      })
       // Preserve the selected wall's stable pose while scanning other surfaces.
       walls = found.map(
         (w) =>

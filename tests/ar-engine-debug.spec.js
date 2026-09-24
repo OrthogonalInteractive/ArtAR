@@ -129,6 +129,7 @@ describe('XR8 debug pipeline lifecycle', () => {
         points.push({ position: { x, y, z: 0 } })
     for (let i = 0; i < 3; i++) {
       now += 700
+      xrScene.camera.position.x = i * 0.04
       frame('NORMAL', points)
     }
     const surfaces = xrScene.scene.getObjectByName('artar-wall-surfaces')
@@ -149,6 +150,50 @@ describe('XR8 debug pipeline lifecycle', () => {
     expect(surfaces.children).toEqual([remembered])
     engine.stopAR()
     expect(xrScene.scene.getObjectByName('artar-wall-surfaces')).toBeUndefined()
+  })
+  it('waits for translation before confirming a feature-point wall and reports why', () => {
+    engine.setDebug(true)
+    const points = []
+    for (let x = -1; x <= 1; x += 0.1)
+      for (let y = 0.2; y <= 2.2; y += 0.1)
+        points.push({ position: { x, y, z: 0 } })
+    for (let i = 0; i < 5; i++) {
+      now += 700
+      // Turning the camera in place is not a new triangulation baseline.
+      xrScene.camera.rotation.y = i * 0.02
+      frame('NORMAL', points)
+      expect(updates.at(-1).wallCount).toBe(0)
+    }
+    expect(updates.at(-1).debug.message).toContain(
+      '端末の位置を左右に少し動かして',
+    )
+    xrScene.camera.position.x = 0.08
+    now += 700
+    frame('NORMAL', points)
+    expect(updates.at(-1).wallCount).toBe(1)
+  })
+  it('restarts provisional evidence after tracking is lost', () => {
+    const points = []
+    for (let x = -1; x <= 1; x += 0.1)
+      for (let y = 0.2; y <= 2.2; y += 0.1)
+        points.push({ position: { x, y, z: 0 } })
+    for (let i = 0; i < 2; i++) {
+      now += 700
+      xrScene.camera.position.x = i * 0.04
+      frame('NORMAL', points)
+    }
+    now += 100
+    frame('LIMITED', [])
+    now += 700
+    xrScene.camera.position.x = 0.08
+    frame('NORMAL', points)
+    expect(updates.at(-1).wallCount).toBe(0)
+    for (let i = 0; i < 2; i++) {
+      now += 700
+      xrScene.camera.position.x += 0.04
+      frame('NORMAL', points)
+    }
+    expect(updates.at(-1).wallCount).toBe(1)
   })
   it('hides stale geometry during tracking loss and removes it on camera shutdown', () => {
     engine.setDebug(true)

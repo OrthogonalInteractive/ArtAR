@@ -259,12 +259,67 @@ export function fitPlacement(
 
 export const WALL_DETECTION_LIMITS = Object.freeze({
   minPoints: 20,
+  minSupportRatio: 0.12,
   minWidth: 0.45,
   minHeight: 0.4,
+  minFilledCells: 6,
+  minAreaRatio: 0.35,
   maxPoints: 800,
   maxDistance: 7,
   confirmations: 3,
+  stableAngleDegrees: 3,
+  stableDepth: 0.04,
+  featureViewpointShift: 0.06,
 })
+
+function fitVerticalPlane(points, cameraPosition) {
+  const origin = points
+    .reduce((s, p) => s.add(p), new Vector3())
+    .multiplyScalar(1 / points.length)
+  let xx = 0,
+    xz = 0,
+    zz = 0
+  for (const p of points) {
+    const x = p.x - origin.x,
+      z = p.z - origin.z
+    xx += x * x
+    xz += x * z
+    zz += z * z
+  }
+  const angle = 0.5 * Math.atan2(2 * xz, xx - zz)
+  const normal = new Vector3(-Math.sin(angle), 0, Math.cos(angle))
+  if (normal.dot(cameraPosition.clone().sub(origin)) < 0) normal.negate()
+  return { origin, normal }
+}
+
+// A large convex hull alone is not evidence of a surface. Two furniture edges
+// or a thin diagonal strip can span both axes with no points between them.
+function surfaceSupport(points, polygon, width, height) {
+  const minX = Math.min(...points.map((p) => p.x))
+  const minY = Math.min(...points.map((p) => p.y))
+  const cells = Array(9).fill(0)
+  for (const p of points) {
+    const column = Math.min(2, Math.floor((3 * (p.x - minX)) / (width || 1)))
+    const row = Math.min(2, Math.floor((3 * (p.y - minY)) / (height || 1)))
+    cells[row * 3 + column]++
+  }
+  const occupied = cells.map((count) => count >= 2)
+  const filledCells = occupied.filter(Boolean).length
+  const spansAxes = [0, 1, 2].every(
+    (i) =>
+      [0, 1, 2].some((j) => occupied[i * 3 + j]) &&
+      [0, 1, 2].some((j) => occupied[j * 3 + i]),
+  )
+  const areaRatio = polygonArea(polygon) / (width * height || 1)
+  return {
+    filledCells,
+    areaRatio,
+    supported:
+      spansAxes &&
+      filledCells >= WALL_DETECTION_LIMITS.minFilledCells &&
+      areaRatio >= WALL_DETECTION_LIMITS.minAreaRatio,
+  }
+}
 
 // The overlay and detector deliberately use the same finite, nearby sample.
 export function sampleWallPoints(rawPoints, cameraPosition) {
@@ -295,12 +350,19 @@ export function detectVerticalWalls(
   } = {},
 ) {
   let remaining = sampleWallPoints(rawPoints, cameraPosition)
+  // Keep this threshold relative to the original cloud, not the leftovers:
+  // random slices through clutter must not become easier to accept on pass 3.
+  const requiredPoints = Math.max(
+    WALL_DETECTION_LIMITS.minPoints,
+    Math.ceil(remaining.length * WALL_DETECTION_LIMITS.minSupportRatio),
+  )
   if (diagnostics)
     Object.assign(diagnostics, {
       rawPoints: rawPoints.length,
       sampledPoints: remaining.length,
       verticalSamples: 0,
       bestInliers: 0,
+      requiredPoints,
       candidates: [],
       status:
         remaining.length < WALL_DETECTION_LIMITS.minPoints
@@ -335,22 +397,17 @@ export function detectVerticalWalls(
     if (diagnostics)
       diagnostics.bestInliers = Math.max(diagnostics.bestInliers, best.length)
     if (best.length < WALL_DETECTION_LIMITS.minPoints) break
-    const mean = best
-      .reduce((s, p) => s.add(p), new Vector3())
-      .multiplyScalar(1 / best.length)
-    let xx = 0,
-      xz = 0,
-      zz = 0
-    for (const p of best) {
-      const x = p.x - mean.x,
-        z = p.z - mean.z
-      xx += x * x
-      xz += x * z
-      zz += z * z
+    // Recheck support after least-squares fitting; the original RANSAC sample
+    // and its refined plane do not necessarily have the same inliers.
+    for (let refine = 0; refine < 2; refine++) {
+      const fit = fitVerticalPlane(best, cameraPosition)
+      const inliers = remaining.filter(
+        (p) => Math.abs(fit.normal.dot(p.clone().sub(fit.origin))) <= tolerance,
+      )
+      if (inliers.length < WALL_DETECTION_LIMITS.minPoints) break
+      best = inliers
     }
-    const angle = 0.5 * Math.atan2(2 * xz, xx - zz)
-    const n = new Vector3(-Math.sin(angle), 0, Math.cos(angle))
-    if (n.dot(cameraPosition.clone().sub(mean)) < 0) n.negate()
+    const { origin: mean, normal: n } = fitVerticalPlane(best, cameraPosition)
     const right = new Vector3().crossVectors(UP, n)
     const projected = best.map((p) => ({
       x: p.clone().sub(mean).dot(right),
@@ -364,16 +421,19 @@ export function detectVerticalWalls(
       best.reduce((s, p) => s + n.dot(p.clone().sub(mean)) ** 2, 0) /
         best.length,
     )
-    // Reject thin lines and broad noisy point clouds.
+    const polygon = convexHull(projected)
+    const support = surfaceSupport(projected, polygon, width, height)
     const candidate = {
       origin: mean,
       normal: n,
-      polygon: convexHull(projected),
+      polygon,
       pointCount: best.length,
       residual,
       source: 'scan',
     }
     const accepted =
+      best.length >= requiredPoints &&
+      support.supported &&
       width >= WALL_DETECTION_LIMITS.minWidth &&
       height >= WALL_DETECTION_LIMITS.minHeight &&
       residual < tolerance * 0.8
@@ -383,8 +443,12 @@ export function detectVerticalWalls(
         ...candidate,
         width,
         height,
+        filledCells: support.filledCells,
+        areaRatio: support.areaRatio,
         accepted,
         reasons: [
+          ...(best.length < requiredPoints ? ['weak-consensus'] : []),
+          ...(!support.supported ? ['sparse-surface'] : []),
           ...(width < WALL_DETECTION_LIMITS.minWidth ? ['narrow'] : []),
           ...(height < WALL_DETECTION_LIMITS.minHeight ? ['short'] : []),
           ...(residual >= tolerance * 0.8 ? ['noisy'] : []),
@@ -428,13 +492,24 @@ function extendObservedWall(wall, candidate) {
   return makeWall({ ...wall, polygon })
 }
 
+function stableObservation(anchor, observed) {
+  return (
+    anchor.normal.dot(observed.normal) >=
+      Math.cos((WALL_DETECTION_LIMITS.stableAngleDegrees * Math.PI) / 180) &&
+    Math.abs(anchor.plane.distanceToPoint(observed.origin)) <=
+      WALL_DETECTION_LIMITS.stableDepth &&
+    Math.abs(observed.plane.distanceToPoint(anchor.origin)) <=
+      WALL_DETECTION_LIMITS.stableDepth
+  )
+}
+
 /** Confirm across updates; retain confirmed walls until the AR session/reset ends. */
 export function createWallTracker() {
   let entries = [],
     counter = 0
-  const confirmed = (entry) => entry.seen >= WALL_DETECTION_LIMITS.confirmations
+  const confirmed = (entry) => entry.confirmed
   return {
-    update(candidates, now) {
+    update(candidates, now, { cameraPosition } = {}) {
       // Only provisional candidates expire. Apply expiry before matching so old
       // one-off observations cannot eventually accumulate into a confirmed wall.
       entries = entries.filter((e) => confirmed(e) || now - e.updated < 2500)
@@ -474,22 +549,52 @@ export function createWallTracker() {
             seen: 0,
             updated: now,
             locked: false,
+            confirmed: false,
           }
           entries.push(entry)
         }
+        // A second estimate in the same update is not independent evidence.
         if (
-          !entry.locked &&
-          observationPriority(candidate) >= observationPriority(entry.wall)
+          seenThisUpdate.has(entry) ||
+          observationPriority(candidate) < observationPriority(entry.wall)
         )
-          entry.wall = confirmed(entry)
-            ? extendObservedWall(entry.wall, candidate)
-            : makeWall({ ...candidate, id: entry.wall.id })
-        if (!seenThisUpdate.has(entry)) {
-          entry.seen++
-          seenThisUpdate.add(entry)
+          continue
+        const observed = makeWall({ ...candidate, id: entry.wall.id })
+        if (!confirmed(entry)) {
+          // Compare every observation with the start of the streak, not with
+          // the previous frame (which would allow an unstable plane to drift).
+          if (!entry.seen || !stableObservation(entry.anchor, observed)) {
+            entry.wall = observed
+            entry.anchor = observed
+            entry.seen = 0
+            entry.firstCamera = cameraPosition?.clone()
+            entry.viewpointShift = 0
+          }
+          if (entry.firstCamera && cameraPosition)
+            entry.viewpointShift = Math.max(
+              entry.viewpointShift,
+              entry.firstCamera.distanceTo(cameraPosition),
+            )
+          entry.seen = Math.min(
+            entry.seen + 1,
+            WALL_DETECTION_LIMITS.confirmations,
+          )
+          // Feature points reprocessed from the same viewpoint are not a fresh
+          // depth measurement. Ask for a small physical movement before fixing a wall.
+          const viewpointReady =
+            observed.source !== 'scan' ||
+            !entry.firstCamera ||
+            entry.viewpointShift >= WALL_DETECTION_LIMITS.featureViewpointShift
+          entry.confirmed =
+            entry.seen >= WALL_DETECTION_LIMITS.confirmations && viewpointReady
         }
+        if (!entry.locked && stableObservation(entry.wall, observed))
+          entry.wall = extendObservedWall(entry.wall, observed)
+        seenThisUpdate.add(entry)
         entry.updated = now
       }
+      for (const entry of entries)
+        if (!confirmed(entry) && !seenThisUpdate.has(entry)) entry.seen = 0
       return entries.filter(confirmed).map((e) => e.wall)
     },
     snapshot() {
@@ -498,6 +603,11 @@ export function createWallTracker() {
         confirmations: e.seen,
         locked: e.locked,
         confirmed: confirmed(e),
+        needsViewpoint:
+          !confirmed(e) &&
+          e.seen >= WALL_DETECTION_LIMITS.confirmations &&
+          !!e.firstCamera &&
+          e.wall.source === 'scan',
       }))
     },
     lock(id) {
