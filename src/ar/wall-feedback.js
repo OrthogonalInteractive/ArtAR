@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { worldPoint } from './walls.js'
 import { disposeObject } from './artwork.js'
+import { wallColors } from './wall-colors.js'
 
 // Product feedback is independent of the optional diagnostic overlay.
 // Only confirmed footprints are shown; never extend them to an infinite wall.
@@ -12,6 +13,7 @@ export function createWallFeedback(scene) {
   let tracking = false
 
   function create(wall) {
+    const colors = wallColors(wall)
     const group = new THREE.Group()
     group.name = `surface-${wall.id}`
     const vertices = wall.polygon.map((p) => worldPoint(wall, p, 0.003))
@@ -22,7 +24,7 @@ export function createWallFeedback(scene) {
     const fill = new THREE.Mesh(
       geometry,
       new THREE.MeshBasicMaterial({
-        color: 0x2acbbb,
+        color: colors.fill,
         transparent: true,
         opacity: 0.22,
         side: THREE.DoubleSide,
@@ -50,7 +52,7 @@ export function createWallFeedback(scene) {
     const rim = new THREE.Mesh(
       new THREE.BufferGeometry().setFromPoints(rimVertices),
       new THREE.MeshBasicMaterial({
-        color: 0x78ffdf,
+        color: colors.rim,
         transparent: true,
         opacity: 0.95,
         side: THREE.DoubleSide,
@@ -89,7 +91,7 @@ export function createWallFeedback(scene) {
     const grid = new THREE.LineSegments(
       new THREE.BufferGeometry().setFromPoints(gridVertices),
       new THREE.LineBasicMaterial({
-        color: 0xbaffee,
+        color: colors.grid,
         transparent: true,
         opacity: 0.55,
         depthWrite: false,

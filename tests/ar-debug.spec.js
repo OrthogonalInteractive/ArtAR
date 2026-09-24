@@ -1,3 +1,4 @@
+import { wallColors } from '../src/ar/wall-colors.js'
 import { describe, it, expect, vi } from 'vitest'
 import { Scene, Vector3 } from 'three'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -156,7 +157,28 @@ describe('3D debug geometry', () => {
     expect(dispose).toHaveBeenCalledOnce()
     expect(scene.children).toHaveLength(0)
   })
-  it('renders confirmed and selected wall colors and removes old wall geometry', () => {
+  it('does not draw accepted duplicate depth candidates over confirmed walls', () => {
+    const layer = createARDebugLayer(new Scene())
+    layer.updateWalls(
+      [wall],
+      [
+        {
+          ...wall,
+          origin: wall.origin.clone().add(new Vector3(0, 0, 0.2)),
+          plane: undefined,
+          accepted: true,
+        },
+      ],
+      null,
+    )
+    const meshes = []
+    layer.root.traverse((o) => {
+      if (o.isMesh) meshes.push(o)
+    })
+    expect(meshes).toHaveLength(1)
+    layer.dispose()
+  })
+  it('keeps wall orientation colors on selection, highlights its border and removes old geometry', () => {
     const layer = createARDebugLayer(new Scene())
     layer.updateWalls([wall], [], null)
     let meshes = []
@@ -164,7 +186,7 @@ describe('3D debug geometry', () => {
       if (o.isMesh) meshes.push(o)
     })
     expect(meshes).toHaveLength(1)
-    expect(meshes[0].material.color.getHex()).toBe(DEBUG_COLORS.confirmed)
+    expect(meshes[0].material.color.getHex()).toBe(wallColors(wall).fill)
     const dispose = vi.spyOn(meshes[0].geometry, 'dispose')
     layer.updateWalls([wall], [], wall.id)
     expect(dispose).toHaveBeenCalledOnce()
@@ -172,7 +194,12 @@ describe('3D debug geometry', () => {
     layer.root.traverse((o) => {
       if (o.isMesh) meshes.push(o)
     })
-    expect(meshes[0].material.color.getHex()).toBe(DEBUG_COLORS.selected)
+    expect(meshes[0].material.color.getHex()).toBe(wallColors(wall).fill)
+    const outlines = []
+    layer.root.traverse((o) => {
+      if (o.isLineLoop) outlines.push(o)
+    })
+    expect(outlines[0].material.color.getHex()).toBe(0xffffff)
     layer.clear()
     meshes = []
     layer.root.traverse((o) => {

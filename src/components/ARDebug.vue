@@ -51,8 +51,8 @@ async function copy() {
     <div class="debug-legend" aria-label="デバッグの凡例">
       <span class="debug-points">● 点群</span
       ><span class="debug-pending">■ 判定待ち</span>
-      <span class="debug-confirmed">■ 認識済み</span
-      ><span class="debug-selected">■ 配置中</span
+      <span class="debug-confirmed">面の色：壁の向き</span
+      ><span class="debug-selected">□ 白枠：配置中</span
       ><span class="debug-rejected">■ 条件未達</span>
     </div>
     <dl class="debug-metrics">

@@ -2408,10 +2408,10 @@ label {
   color: #ff9999;
 }
 .debug-confirmed {
-  color: #95f98a;
+  color: #edf4f1;
 }
 .debug-selected {
-  color: #c59bff;
+  color: #ffffff;
 }
 .debug-metrics {
   display: grid;

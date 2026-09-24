@@ -4,15 +4,15 @@ import {
   sampleWallPoints,
   worldPoint,
   WALL_DETECTION_LIMITS,
+  wallMatch,
 } from './walls.js'
 import { disposeObject } from './artwork.js'
+import { wallColors } from './wall-colors.js'
 
 export const DEBUG_COLORS = Object.freeze({
   points: 0x58d9ff,
   pending: 0xffd36b,
   rejected: 0xff7474,
-  confirmed: 0x95f98a,
-  selected: 0xc59bff,
 })
 export const CANDIDATE_REASONS = Object.freeze({
   narrow: '幅45cm未満',
@@ -138,7 +138,7 @@ export function createARDebugLayer(scene) {
     tracked = false
   root.add(planes)
 
-  function plane(wall, color) {
+  function plane(wall, color, selected = false) {
     if (wall.polygon.length < 3) return
     const vertices = wall.polygon.map((p) => worldPoint(wall, p, 0.006))
     const g = new THREE.BufferGeometry().setFromPoints(vertices)
@@ -149,7 +149,7 @@ export function createARDebugLayer(scene) {
       g,
       new THREE.MeshBasicMaterial({
         color,
-        opacity: 0.12,
+        opacity: selected ? 0.2 : 0.12,
         transparent: true,
         side: THREE.DoubleSide,
         depthTest: false,
@@ -161,7 +161,7 @@ export function createARDebugLayer(scene) {
     const outline = new THREE.LineLoop(
       new THREE.BufferGeometry().setFromPoints(vertices),
       new THREE.LineBasicMaterial({
-        color,
+        color: selected ? 0xffffff : color,
         depthTest: false,
         depthWrite: false,
       }),
@@ -218,26 +218,14 @@ export function createARDebugLayer(scene) {
       clearPlanes()
       for (const [i, candidate] of candidates.entries()) {
         // A confirmed plane replaces the matching provisional overlay.
-        if (
-          candidate.accepted &&
-          walls.some(
-            (w) =>
-              w.normal.dot(candidate.normal) > 0.985 &&
-              Math.abs(w.plane.distanceToPoint(candidate.origin)) < 0.1,
-          )
-        )
+        if (candidate.accepted && walls.some((w) => wallMatch(w, candidate)))
           continue
         plane(
           makeWall({ ...candidate, id: `candidate-${i}` }),
           candidate.accepted ? DEBUG_COLORS.pending : DEBUG_COLORS.rejected,
         )
       }
-      walls.forEach((w) =>
-        plane(
-          w,
-          w.id === selectedId ? DEBUG_COLORS.selected : DEBUG_COLORS.confirmed,
-        ),
-      )
+      walls.forEach((w) => plane(w, wallColors(w).fill, w.id === selectedId))
     },
     clear() {
       geometry.setDrawRange(0, 0)

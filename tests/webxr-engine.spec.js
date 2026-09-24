@@ -138,6 +138,7 @@ async function start() {
 function frame({
   tracked = true,
   depth = true,
+  depthMeters = 2,
   native = false,
   hits = [],
   yaw = 0,
@@ -163,7 +164,8 @@ function frame({
   const f = {
     getViewerPose: () =>
       tracked ? { views: [view], emulatedPosition: false } : null,
-    getDepthInformation: () => (depth ? { getDepthInMeters: () => 2 } : null),
+    getDepthInformation: () =>
+      depth ? { getDepthInMeters: () => depthMeters } : null,
     getHitTestResults: () => {
       const point = hits.shift()
       return point
@@ -320,6 +322,29 @@ describe('Android WebXR routing and lifecycle', () => {
     engine.reset()
     expect(surfaces.children).toHaveLength(0)
     expect(states.at(-1)).toMatchObject({ placed: false, artHint: null })
+  })
+  it('never moves placed art onto a duplicate depth layer in front of its wall', async () => {
+    await start()
+    for (let i = 0; i < 3; i++) frame()
+    expect(engine.place()).toBe(true)
+    const scene = renderer.render.mock.lastCall[0]
+    const surfaces = scene.getObjectByName('artar-wall-surfaces')
+    const model = scene.getObjectByName('test-artwork')
+    const position = model.position.clone()
+    for (let i = 0; i < 6; i++) frame({ depthMeters: 1.8 })
+    expect(states.at(-1).wallCount).toBe(1)
+    expect(surfaces.children).toHaveLength(1)
+    expect(engine.place()).toBe(true)
+    expect(model.position).toEqual(position)
+  })
+  it('uses a native wall instead of drawing a second depth wall in front', async () => {
+    await start()
+    for (let i = 0; i < 3; i++) frame({ native: true, depthMeters: 1.8 })
+    expect(states.at(-1).wallCount).toBe(1)
+    expect(engine.place()).toBe(true)
+    expect(states.at(-1).wallSource).toBe('webxr-plane')
+    const scene = renderer.render.mock.lastCall[0]
+    expect(scene.getObjectByName('test-artwork').position.z).toBeCloseTo(-1.992)
   })
   it.each([
     { source: 'depth', observation: { depth: true } },

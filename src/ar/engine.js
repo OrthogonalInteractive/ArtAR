@@ -5,6 +5,7 @@ import {
   fitPlacement,
   localPoint,
   worldPoint,
+  wallMatch,
   detectVerticalWalls,
   createWallTracker,
 } from './walls.js'
@@ -503,13 +504,7 @@ export function createExperience({ canvas, onState, onError }) {
         for (const native of reality.nativeWalls || []) {
           for (let i = detected.length - 1; i >= 0; i--) {
             const estimate = detected[i]
-            if (
-              estimate.normal.dot(native.normal) > 0.985 &&
-              Math.abs(
-                native.normal.dot(estimate.origin.clone().sub(native.origin)),
-              ) < 0.1
-            )
-              detected.splice(i, 1)
+            if (wallMatch(native, estimate)) detected.splice(i, 1)
           }
           detected.push(native)
         }
@@ -606,7 +601,7 @@ export function createExperience({ canvas, onState, onError }) {
     arCanvas.className = 'ar-canvas'
     arCanvas.setAttribute(
       'aria-label',
-      '水色の壁をタップして配置。作品をドラッグして移動できます。',
+      '色のついた壁をタップして配置。作品をドラッグして移動できます。',
     )
     host.appendChild(arCanvas)
     bind(arCanvas)
@@ -708,7 +703,7 @@ export function createExperience({ canvas, onState, onError }) {
     arCanvas.className = 'ar-canvas'
     arCanvas.setAttribute(
       'aria-label',
-      '水色の壁をタップして配置。作品をドラッグして移動できます。',
+      '色のついた壁をタップして配置。作品をドラッグして移動できます。',
     )
     host.appendChild(arCanvas)
     bind(arCanvas)

@@ -69,6 +69,106 @@ function clip(polygon, a, b, c) {
   return result
 }
 
+// These are association tolerances, not a claim about measurement accuracy.
+export const WALL_MATCH_LIMITS = Object.freeze({
+  sameNormal: 0.985,
+  sameDepth: 0.1,
+  adjacentGap: 0.25,
+  duplicateNormal: Math.cos(Math.PI / 12),
+  duplicateDepth: 0.35,
+  duplicateOverlap: 0.55,
+})
+const polygonArea = (polygon) =>
+  Math.abs(
+    polygon.reduce((sum, p, i) => {
+      const q = polygon[(i + 1) % polygon.length]
+      return sum + p.x * q.y - q.x * p.y
+    }, 0),
+  ) / 2
+
+function polygonGap(a, b) {
+  let closest = Infinity
+  for (const [points, edges] of [
+    [a, b],
+    [b, a],
+  ])
+    for (const p of points)
+      for (let i = 0; i < edges.length; i++) {
+        const q = edges[i],
+          r = edges[(i + 1) % edges.length]
+        const dx = r.x - q.x,
+          dy = r.y - q.y
+        const t = Math.max(
+          0,
+          Math.min(
+            1,
+            ((p.x - q.x) * dx + (p.y - q.y) * dy) / (dx * dx + dy * dy || 1),
+          ),
+        )
+        closest = Math.min(
+          closest,
+          Math.hypot(p.x - q.x - t * dx, p.y - q.y - t * dy),
+        )
+      }
+  return closest
+}
+
+/** Compare actual footprints, not just their (view-dependent) centroids.
+ * 'same' may extend a footprint. 'duplicate' is an ambiguous nearby layer:
+ * suppress it without moving, expanding or reconfirming the existing wall.
+ */
+export function wallMatch(first, second) {
+  const a = first.plane ? first : makeWall(first)
+  const b = second.plane ? second : makeWall(second)
+  const dot = a.normal.dot(b.normal)
+  if (
+    dot < WALL_MATCH_LIMITS.duplicateNormal ||
+    a.polygon.length < 3 ||
+    b.polygon.length < 3
+  )
+    return null
+  const projected = convexHull(
+    b.polygon.map((p) => localPoint(a, worldPoint(b, p))),
+  )
+  let overlap = projected
+  for (let i = 0; i < a.polygon.length && overlap.length; i++) {
+    const p = a.polygon[i],
+      q = a.polygon[(i + 1) % a.polygon.length]
+    const x = p.y - q.y,
+      y = q.x - p.x
+    overlap = clip(overlap, x, y, x * p.x + y * p.y)
+  }
+  const area = polygonArea(overlap)
+  const centerPoints = area > EPS ? overlap : projected
+  const center = centerPoints.reduce(
+    (sum, p) => ({
+      x: sum.x + p.x / centerPoints.length,
+      y: sum.y + p.y / centerPoints.length,
+    }),
+    { x: 0, y: 0 },
+  )
+  const distance =
+    Math.abs(b.plane.distanceToPoint(worldPoint(a, center))) / dot
+  if (
+    dot > WALL_MATCH_LIMITS.sameNormal &&
+    distance < WALL_MATCH_LIMITS.sameDepth &&
+    (area > EPS ||
+      polygonGap(a.polygon, projected) <= WALL_MATCH_LIMITS.adjacentGap)
+  )
+    return 'same'
+  const smallerArea = Math.min(polygonArea(a.polygon), polygonArea(projected))
+  if (
+    smallerArea > EPS &&
+    area / smallerArea >= WALL_MATCH_LIMITS.duplicateOverlap &&
+    distance <= WALL_MATCH_LIMITS.duplicateDepth
+  )
+    return 'duplicate'
+  return null
+}
+
+// Native planes take precedence over a depth/hit estimate of the same surface.
+const observationPriority = (wall) => (wall.source === 'webxr-plane' ? 2 : 1)
+
 /** Erode a convex wall by the complete framed rectangle, then clip room corners. */
 export function placementArea(
   wall,
@@ -339,13 +439,35 @@ export function createWallTracker() {
       // one-off observations cannot eventually accumulate into a confirmed wall.
       entries = entries.filter((e) => confirmed(e) || now - e.updated < 2500)
       const seenThisUpdate = new Set()
-      for (const candidate of candidates) {
-        let entry = entries.find(
-          (e) =>
-            e.wall.normal.dot(candidate.normal) > 0.985 &&
-            Math.abs(e.wall.plane.distanceToPoint(candidate.origin)) < 0.1 &&
-            e.wall.origin.distanceTo(candidate.origin) < 2.5,
-        )
+      const observations = [...candidates].sort(
+        (a, b) =>
+          observationPriority(b) - observationPriority(a) ||
+          (b.pointCount || 0) - (a.pointCount || 0),
+      )
+      for (const candidate of observations) {
+        const matches = entries
+          .map((entry) => ({ entry, match: wallMatch(entry.wall, candidate) }))
+          .filter((item) => item.match)
+          .sort(
+            (a, b) =>
+              Number(b.entry.locked) - Number(a.entry.locked) ||
+              Number(confirmed(b.entry)) - Number(confirmed(a.entry)) ||
+              Number(b.match === 'same') - Number(a.match === 'same'),
+          )
+        // A depth fluctuation in front of a remembered wall must not create a
+        // nearer selectable surface, nor count toward confirming a noisy plane.
+        let entry = matches[0]?.entry
+        if (matches[0]?.match === 'duplicate') {
+          if (
+            !confirmed(entry) &&
+            observationPriority(candidate) > observationPriority(entry.wall)
+          ) {
+            // A later native observation can replace an unconfirmed estimate.
+            // Start its confirmations over; do not inherit the displaced pose's evidence.
+            entry.wall = makeWall({ ...candidate, id: entry.wall.id })
+            entry.seen = 0
+          } else continue
+        }
         if (!entry) {
           entry = {
             wall: makeWall({ ...candidate, id: `scan-${++counter}` }),
@@ -355,7 +477,10 @@ export function createWallTracker() {
           }
           entries.push(entry)
         }
-        if (!entry.locked)
+        if (
+          !entry.locked &&
+          observationPriority(candidate) >= observationPriority(entry.wall)
+        )
           entry.wall = confirmed(entry)
             ? extendObservedWall(entry.wall, candidate)
             : makeWall({ ...candidate, id: entry.wall.id })

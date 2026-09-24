@@ -7,6 +7,7 @@ import {
   worldPoint,
   detectVerticalWalls,
   createWallTracker,
+  wallMatch,
 } from '../src/ar/walls.js'
 import { artDimensions, seedArtworks } from '../src/data/catalog.js'
 const wall = (extra = {}) =>
@@ -222,5 +223,139 @@ describe('wall memory within an AR session', () => {
     expect(tracker.snapshot()[0].confirmations).toBe(1)
     expect(tracker.update([], 13000)).toEqual([])
     expect(tracker.snapshot()).toEqual([])
+  })
+})
+
+describe('overlapping wall observations', () => {
+  function scan(tracker, candidates) {
+    tracker.update(candidates, 0)
+    tracker.update(candidates, 700)
+    return tracker.update(candidates, 1400)
+  }
+  it.each([0.18, 0.28, -0.28])(
+    'suppresses a %sm parallel depth layer without moving the confirmed wall',
+    (offset) => {
+      const tracker = createWallTracker()
+      const [original] = scan(tracker, [wall()])
+      tracker.lock(original.id)
+      const phantom = wall({ origin: new Vector3(0, 0, offset) })
+      for (let time = 2100; time < 8000; time += 700)
+        expect(tracker.update([phantom], time)).toEqual([original])
+      expect(tracker.snapshot()).toHaveLength(1)
+      expect(original.origin.z).toBe(0)
+    },
+  )
+  it('does not use ambiguous depth layers to confirm an unstable candidate', () => {
+    const tracker = createWallTracker()
+    tracker.update([wall()], 0)
+    tracker.update([wall({ origin: new Vector3(0, 0, 0.2) })], 700)
+    expect(
+      tracker.update([wall({ origin: new Vector3(0, 0, 0.2) })], 1400),
+    ).toEqual([])
+    expect(tracker.snapshot()[0].confirmations).toBe(1)
+  })
+  it('prefers a native plane over a overlapping depth estimate regardless of input order', () => {
+    const native = wall({ source: 'webxr-plane' })
+    const depth = wall({
+      source: 'webxr-depth',
+      origin: new Vector3(0, 0, 0.2),
+    })
+    for (const observations of [
+      [depth, native],
+      [native, depth],
+    ]) {
+      const tracker = createWallTracker()
+      const found = scan(tracker, observations)
+      expect(found).toHaveLength(1)
+      expect(found[0].source).toBe('webxr-plane')
+      expect(found[0].origin.z).toBe(0)
+    }
+  })
+  it('keeps true perpendicular walls, separated parallel walls and disjoint steps', () => {
+    const tracker = createWallTracker()
+    const found = scan(tracker, [
+      wall(),
+      wall({ normal: new Vector3(1, 0, 0) }),
+      wall({ origin: new Vector3(0, 0, 0.8) }),
+      wall({ origin: new Vector3(2.5, 0, 0.2) }),
+    ])
+    expect(found).toHaveLength(4)
+    expect(
+      wallMatch(
+        wall(),
+        wall({ normal: new Vector3(0, 0, -1), origin: new Vector3(0, 0, 0.2) }),
+      ),
+    ).toBeNull()
+  })
+  it('restarts confirmation when a late native plane replaces a provisional depth layer', () => {
+    const tracker = createWallTracker()
+    const depth = wall({
+      source: 'webxr-depth',
+      origin: new Vector3(0, 0, 0.2),
+    })
+    const native = wall({ source: 'webxr-plane' })
+    tracker.update([depth], 0)
+    tracker.update([depth], 700)
+    expect(tracker.update([depth, native], 1400)).toEqual([])
+    expect(tracker.snapshot()).toHaveLength(1)
+    expect(tracker.snapshot()[0].confirmations).toBe(1)
+    tracker.update([native], 2100)
+    const [found] = tracker.update([native], 2800)
+    expect(found.origin.z).toBe(0)
+    expect(found.source).toBe('webxr-plane')
+  })
+  it('does not let a lower-priority matching observation overwrite a pending native pose', () => {
+    const tracker = createWallTracker()
+    const [found] = scan(tracker, [
+      wall({ source: 'webxr-depth', origin: new Vector3(0, 0, 0.05) }),
+      wall({ source: 'webxr-plane' }),
+    ])
+    expect(found.origin.z).toBe(0)
+    expect(found.source).toBe('webxr-plane')
+  })
+  it('uses polygon intersection rather than overlapping bounding boxes', () => {
+    const a = wall({
+      polygon: [
+        { x: -1, y: 0 },
+        { x: 1, y: 0 },
+        { x: -1, y: 2 },
+      ],
+    })
+    const b = wall({
+      origin: new Vector3(0, 0, 0.2),
+      polygon: [
+        { x: -0.5, y: 2 },
+        { x: 1.5, y: 0 },
+        { x: 1.5, y: 2 },
+      ],
+    })
+    expect(wallMatch(a, b)).toBeNull()
+  })
+  it('matches a broad wall when the observed center shifts more than 2.5m', () => {
+    const a = wall({
+      polygon: [
+        { x: -4, y: 0 },
+        { x: 4, y: 0 },
+        { x: 4, y: 2 },
+        { x: -4, y: 2 },
+      ],
+    })
+    const b = wall({ origin: new Vector3(3, 0, 0.02) })
+    expect(wallMatch(a, b)).toBe('same')
+    const tracker = createWallTracker()
+    const [original] = scan(tracker, [a])
+    expect(tracker.update([b], 2100)).toHaveLength(1)
+    expect(tracker.update([b], 2800)[0].id).toBe(original.id)
+  })
+  it('recognizes a slightly tilted overlapping depth layer without merging a corner', () => {
+    const tilted = wall({
+      origin: new Vector3(0, 0, 0.2),
+      normal: new Vector3(0, 0, 1).applyAxisAngle(
+        new Vector3(0, 1, 0),
+        Math.PI / 15,
+      ),
+    })
+    expect(wallMatch(wall(), tilted)).toBe('duplicate')
+    expect(wallMatch(wall(), wall({ normal: new Vector3(1, 0, 0) }))).toBeNull()
   })
 })
