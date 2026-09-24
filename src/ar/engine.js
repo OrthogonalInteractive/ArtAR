@@ -246,9 +246,7 @@ export function createExperience({ canvas, onState, onError }) {
       )
     applyPosition()
     updateGuide()
-    notify({
-      message: fit.clamped ? '額縁が壁の範囲に収まる位置に調整しました。' : '',
-    })
+    notify()
     return true
   }
   function resize() {
@@ -324,11 +322,7 @@ export function createExperience({ canvas, onState, onError }) {
       model.visible = !!selectedWall
       applyPosition()
       updateGuide()
-      notify({
-        message: nextPosition?.clamped
-          ? '新しい額縁の外寸に合わせて位置を調整しました。'
-          : '',
-      })
+      notify()
       return true
     } catch (e) {
       onError(e.message)
@@ -503,11 +497,7 @@ export function createExperience({ canvas, onState, onError }) {
     }
     if (reality.trackingStatus !== lastStatus) {
       lastStatus = reality.trackingStatus
-      notify({
-        message: tracking
-          ? ''
-          : '空間を再認識しています。端末をゆっくり動かしてください。',
-      })
+      notify()
     }
     if (tracking && now - lastDetection > 650) {
       lastDetection = now
@@ -680,10 +670,7 @@ export function createExperience({ canvas, onState, onError }) {
       notify({ message: 'カメラを起動しています…' })
       const started = await session.start()
       if (!started || disposed || webxr !== session) return false
-      notify({
-        message:
-          '壁を上下・左右にゆっくり映して、飾る範囲を認識させてください。',
-      })
+      notify()
       return true
     } catch (error) {
       if (!disposed && (!session || webxr === session)) {
@@ -750,10 +737,7 @@ export function createExperience({ canvas, onState, onError }) {
             debugLayer.setEnabled(true)
           }
           void setArt(sessionArt)
-          notify({
-            message:
-              '壁の模様や角が映るように、端末をゆっくり左右に動かしてください。',
-          })
+          notify()
         },
         onUpdate({ processCpuResult }) {
           updateTracking(processCpuResult?.reality)
@@ -867,9 +851,7 @@ export function createExperience({ canvas, onState, onError }) {
         })
         if (model) model.visible = false
         updateGuide()
-        notify({
-          message: '壁を再検出します。カメラをゆっくり動かしてください。',
-        })
+        notify()
       } else {
         placeOn(walls[0], { x: 0, y: 1.65 })
       }
