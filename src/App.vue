@@ -53,6 +53,7 @@ const studio = ref(),
     focusedWallId: null,
     placedWallId: null,
     canPlace: false,
+    planesVisible: true,
   })
 const dialog = ref(null),
   toast = ref(props.loadError || initial.error || ''),
@@ -79,6 +80,7 @@ const anotherWallFocused = computed(
   () =>
     !!(
       state.value.placed &&
+      state.value.planesVisible &&
       state.value.focusedWallId &&
       state.value.focusedWallId !== state.value.placedWallId
     ),
@@ -86,6 +88,7 @@ const anotherWallFocused = computed(
 const showPlacement = computed(
   () =>
     isAR.value &&
+    state.value.planesVisible &&
     !mobileCollection.value &&
     !state.value.dragging &&
     (!state.value.placed || (state.value.tracking && anotherWallFocused.value)),
@@ -93,6 +96,7 @@ const showPlacement = computed(
 const showRemoval = computed(
   () =>
     isAR.value &&
+    state.value.planesVisible &&
     !mobileCollection.value &&
     state.value.tracking &&
     !state.value.dragging &&
@@ -100,6 +104,9 @@ const showRemoval = computed(
 )
 const debugEnabled = ref(
   new URLSearchParams(location.search).get('debug') === '1',
+)
+const debugVisible = computed(
+  () => debugEnabled.value && state.value.planesVisible,
 )
 let toastTimer, webmcpLifecycle
 const showToast = (message) => {
@@ -133,8 +140,12 @@ async function studioReady() {
   if (active.value) await selectArt(active.value)
 }
 function toggleDebug() {
-  debugEnabled.value = !debugEnabled.value
+  debugEnabled.value = !debugVisible.value
+  if (debugEnabled.value) studio.value.setPlanesVisible(true)
   studio.value.setDebug(debugEnabled.value)
+}
+function togglePlanes() {
+  studio.value.setPlanesVisible(!state.value.planesVisible)
 }
 async function openAR() {
   dialog.value = 'ar'
@@ -323,7 +334,7 @@ onBeforeUnmount(() => {
       {
         'ar-active': isAR,
         'webxr-active': isAR && state.backend === 'webxr',
-        'debug-active': isAR && debugEnabled,
+        'debug-active': isAR && debugVisible,
         'dragging-art': isAR && state.dragging,
       },
     ]"
@@ -434,23 +445,31 @@ onBeforeUnmount(() => {
             @ready="studioReady"
           />
           <div class="stage-top">
-            <span
-              class="stage-chip"
+            <button
+              v-if="isAR"
+              class="stage-chip plane-visibility-toggle"
+              :aria-pressed="state.planesVisible"
+              :aria-label="state.planesVisible ? '平面を非表示' : '平面を表示'"
+              @click="togglePlanes"
               :class="{
-                'wall-legend': isAR && state.wallCount > 0 && state.tracking,
+                'wall-legend':
+                  state.planesVisible && state.wallCount > 0 && state.tracking,
               }"
-              ><Icon :name="isAR ? 'wall' : 'grid'" :size="15" />{{
-                isAR
-                  ? state.tracking
-                    ? `${state.wallCount}面を認識 · 薄色は推定`
-                    : '空間を認識中'
-                  : 'バーチャルルーム'
-              }}</span
+            >
+              <Icon
+                :name="state.planesVisible ? 'eye' : 'eye-off'"
+                :size="15"
+              />
+              {{ state.wallCount }}面 ·
+              {{ state.planesVisible ? '平面を非表示' : '平面を表示' }}
+            </button>
+            <span v-else class="stage-chip"
+              ><Icon name="grid" :size="15" />バーチャルルーム</span
             >
             <div v-if="isAR" class="ar-top-actions">
               <button
                 class="stage-chip debug-toggle"
-                :aria-pressed="debugEnabled"
+                :aria-pressed="debugVisible"
                 @click="toggleDebug"
               >
                 <Icon name="grid" :size="15" />デバッグ
@@ -461,7 +480,7 @@ onBeforeUnmount(() => {
             </div>
             <span v-else class="scale-chip">1:1<span>実寸比率</span></span>
           </div>
-          <ARDebug v-if="isAR && debugEnabled" :data="state.debug" />
+          <ARDebug v-if="isAR && debugVisible" :data="state.debug" />
           <span
             v-if="showPlacement || showRemoval"
             class="scan-reticle"
@@ -533,6 +552,7 @@ onBeforeUnmount(() => {
             v-if="
               isAR &&
               state.placed &&
+              state.planesVisible &&
               state.tracking &&
               state.artHint &&
               !mobileCollection
@@ -561,22 +581,28 @@ onBeforeUnmount(() => {
                       ? '別の壁へ移せます'
                       : state.placed
                         ? '作品をドラッグして移動'
-                        : state.wallCount
-                          ? '色のついた壁をタップして配置'
-                          : '壁をゆっくり映してください'
+                        : !state.planesVisible
+                          ? '平面を表示して配置できます'
+                          : state.wallCount
+                            ? '色のついた壁をタップして配置'
+                            : '壁をゆっくり映してください'
               }}</strong>
               <span>{{
                 !state.tracking
                   ? '端末をゆっくり動かしてください'
                   : state.dragging
-                    ? '色のついた面に沿って動かせます'
+                    ? state.planesVisible
+                      ? '色のついた面に沿って動かせます'
+                      : '平面は非表示のまま移動できます'
                     : anotherWallFocused && state.canPlace
                       ? '「ここに飾る」でこの壁へ移動'
                       : state.placed
                         ? '作品に触れたまま、上下・左右へ'
-                        : state.wallCount
-                          ? '濃い面は観測済み・薄い面は推定範囲'
-                          : '端末の位置を左右に少し動かしてください'
+                        : !state.planesVisible
+                          ? '左上の「平面を表示」で認識面を確認'
+                          : state.wallCount
+                            ? '濃い面は観測済み・薄い面は推定範囲'
+                            : '端末の位置を左右に少し動かしてください'
               }}</span>
             </div>
           </div>
@@ -900,6 +926,9 @@ onBeforeUnmount(() => {
         <h3>自分の部屋でAR体験</h3>
         <p>
           「ARで飾る」からカメラを開始し、壁を認識させてください。検出済みの範囲内で、額縁の外寸が収まるように配置します。作品を切り替えても、位置と向きを引き継ぎます。別の認識済みの壁へ画面中央を向けると「ここに飾る」で移動できます。「平面を削除」は画面中央の平面だけを除外し、そこに作品があれば、収まる最寄りの平面へ移します。移動先がなければ配置を解除します。「壁の再検出」は削除の除外も含め、認識した壁と配置を消してやり直す操作です。
+        </p>
+        <p>
+          左上の「平面を非表示」で、認識した面や操作枠を隠して作品を見られます。配置を保ったまま移動・作品切り替えができ、「平面を表示」で元に戻せます。
         </p>
         <h3>壁と実寸の精度</h3>
         <p>

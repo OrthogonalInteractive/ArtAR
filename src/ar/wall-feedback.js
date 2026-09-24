@@ -10,7 +10,8 @@ export function createWallFeedback(scene) {
   root.name = 'artar-wall-surfaces'
   scene.add(root)
   const entries = new Map()
-  let tracking = false
+  let tracking = false,
+    enabled = true
 
   function create(wall) {
     const colors = wallColors(wall)
@@ -155,9 +156,13 @@ export function createWallFeedback(scene) {
   }
 
   return {
+    setEnabled(value) {
+      enabled = !!value
+      root.visible = tracking && enabled
+    },
     setTracking(value) {
       tracking = !!value
-      root.visible = tracking
+      root.visible = tracking && enabled
     },
     update(walls, { selectedId, candidateId, dragging = false } = {}) {
       const ids = new Set(walls.map((wall) => wall.id))
@@ -209,7 +214,7 @@ export function createWallFeedback(scene) {
             entry.rim.material.opacity * 0.55
         }
       }
-      root.visible = tracking
+      root.visible = tracking && enabled
     },
     dispose() {
       entries.clear()

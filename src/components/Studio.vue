@@ -26,6 +26,7 @@ defineExpose({
   startAR: () => engine?.startAR(host.value),
   stopAR: () => engine?.stopAR(),
   setDebug: (value) => engine?.setDebug(value),
+  setPlanesVisible: (value) => engine?.setPlanesVisible(value),
   place: () => engine?.place(),
   removeWall: (id) => engine?.removeWall(id),
   clearPlacement: () => engine?.clearPlacement(),

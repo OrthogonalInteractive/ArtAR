@@ -225,6 +225,65 @@ function frame({
 }
 
 describe('Android WebXR routing and lifecycle', () => {
+  it('keeps hidden planes hidden through detection, dragging, artwork swaps and tracking recovery', async () => {
+    engine.setDebug(true)
+    await start()
+    engine.setPlanesVisible(false)
+    for (let i = 0; i < 3; i++) frame()
+    const scene = renderer.render.mock.lastCall[0]
+    const surfaces = scene.getObjectByName('artar-wall-surfaces')
+    const debug = scene.getObjectByName('artar-debug')
+    expect(states.at(-1)).toMatchObject({ planesVisible: false, wallCount: 1 })
+    expect(surfaces.visible).toBe(false)
+    expect(debug.visible).toBe(false)
+    expect(engine.place()).toBe(true)
+    const id = states.at(-1).placedWallId
+    const position = scene.getObjectByName('test-artwork').position.clone()
+    expect(await engine.setArt(seedArtworks[1])).toBe(true)
+    const model = scene.getObjectByName('test-artwork')
+    expect(model.position).toEqual(position)
+    expect(model.visible).toBe(true)
+    expect(model.getObjectByName('artar-drag-outline').visible).toBe(false)
+    expect(states.at(-1).artHint).toBeNull()
+    const arCanvas = host.querySelector('.ar-canvas')
+    arCanvas.setPointerCapture = vi.fn()
+    const pointer = (type, x) => {
+      const event = new MouseEvent(type, {
+        button: 0,
+        clientX: x,
+        clientY: 320,
+      })
+      Object.defineProperty(event, 'pointerId', { value: 1 })
+      arCanvas.dispatchEvent(event)
+    }
+    pointer('pointerdown', 180)
+    pointer('pointermove', 220)
+    expect(states.at(-1).dragging).toBe(true)
+    expect(model.position.x).toBeGreaterThan(position.x)
+    frame()
+    expect(surfaces.visible).toBe(false)
+    pointer('pointerup', 220)
+    frame({ tracked: false })
+    expect(model.visible).toBe(false)
+    frame()
+    expect(model.visible).toBe(true)
+    expect(surfaces.visible).toBe(false)
+    expect(debug.visible).toBe(false)
+    const moved = model.position.clone()
+    engine.setPlanesVisible(true)
+    expect(surfaces.visible).toBe(true)
+    expect(debug.visible).toBe(true)
+    expect(model.getObjectByName('artar-drag-outline').visible).toBe(true)
+    expect(model.position).toEqual(moved)
+    expect(states.at(-1)).toMatchObject({
+      placedWallId: id,
+      wallCount: 1,
+      planesVisible: true,
+    })
+    engine.setPlanesVisible(false)
+    engine.reset()
+    expect(states.at(-1)).toMatchObject({ planesVisible: true, wallCount: 0 })
+  })
   const nativePlane = (x, z, yaw, width = 1, height = 1) => ({
     orientation: 'vertical',
     planeSpace: {

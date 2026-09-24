@@ -94,6 +94,7 @@ export function createExperience({ canvas, onState, onError }) {
     generation = 0,
     guide,
     guideOn = true,
+    planesVisible = true,
     running = false
   let tracking = false,
     lastDetection = 0,
@@ -124,6 +125,7 @@ export function createExperience({ canvas, onState, onError }) {
     expansion = createWallExpansion(),
     raycaster = new THREE.Raycaster()
   function resetWallMap() {
+    planesVisible = true
     tracker.reset()
     boundaryTracker.reset()
     expansion.reset()
@@ -151,12 +153,14 @@ export function createExperience({ canvas, onState, onError }) {
         constrain(candidateWall, rayPoint)
       ),
       debugEnabled,
+      planesVisible,
       debug: debugEnabled ? latestDebug : null,
       ...extra,
     })
   const dimensions = () => artDimensions(art)
   function artworkHint() {
-    if (mode !== 'ar' || !tracking || !selectedWall || !art) return null
+    if (mode !== 'ar' || !tracking || !selectedWall || !art || !planesVisible)
+      return null
     const size = dimensions()
     const p = worldPoint(
       selectedWall,
@@ -196,7 +200,11 @@ export function createExperience({ canvas, onState, onError }) {
     if (mode === 'ar') {
       if (!arSceneReady) return
       wallFeedback ||= createWallFeedback(scene)
+      wallFeedback.setEnabled(planesVisible)
       wallFeedback.setTracking(tracking)
+      debugLayer?.setEnabled(debugEnabled && planesVisible)
+      const outline = model?.getObjectByName('artar-drag-outline')
+      if (outline) outline.visible = planesVisible
       wallFeedback.update(walls, {
         selectedId: selectedWall?.id,
         candidateId: candidateWall?.id,
@@ -740,7 +748,7 @@ export function createExperience({ canvas, onState, onError }) {
       arSceneReady = true
       if (debugEnabled) {
         debugLayer = createARDebugLayer(scene)
-        debugLayer.setEnabled(true)
+        debugLayer.setEnabled(debugEnabled && planesVisible)
       }
       if (art) void setArt(art)
       session = createWebXRSession({
@@ -844,7 +852,7 @@ export function createExperience({ canvas, onState, onError }) {
           lightScene()
           if (debugEnabled) {
             debugLayer = createARDebugLayer(scene)
-            debugLayer.setEnabled(true)
+            debugLayer.setEnabled(debugEnabled && planesVisible)
           }
           void setArt(sessionArt)
           notify()
@@ -902,6 +910,11 @@ export function createExperience({ canvas, onState, onError }) {
     startAR,
     stopAR,
     removeWall,
+    setPlanesVisible(value) {
+      planesVisible = !!value
+      updateGuide()
+      notify()
+    },
     setDebug(enabled) {
       debugEnabled = !!enabled
       lastDebugUpdate = 0
@@ -910,7 +923,7 @@ export function createExperience({ canvas, onState, onError }) {
         debugLayer.setTracking(tracking)
         lastDetection = 0
       }
-      debugLayer?.setEnabled(debugEnabled)
+      debugLayer?.setEnabled(debugEnabled && planesVisible)
       if (!debugEnabled) {
         debugLayer?.clear()
         diagnostics = null

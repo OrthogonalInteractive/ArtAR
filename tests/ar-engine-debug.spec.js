@@ -104,6 +104,46 @@ function frame(status, points) {
   })
 }
 describe('XR8 debug pipeline lifecycle', () => {
+  it('hides XR8 plane and debug overlays while retaining the placed artwork', () => {
+    engine.setDebug(true)
+    document.querySelector('.ar-canvas').getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      width: 360,
+      height: 640,
+    })
+    const points = []
+    for (let x = -1; x <= 1; x += 0.1)
+      for (let y = 0.2; y <= 2.2; y += 0.1)
+        points.push({ position: { x, y, z: 0 } })
+    for (let i = 0; i < 3; i++) {
+      now += 700
+      xrScene.camera.position.x += 0.04
+      xrScene.camera.updateMatrixWorld()
+      frame('NORMAL', points)
+    }
+    expect(engine.place()).toBe(true)
+    const id = updates.at(-1).placedWallId
+    const surfaces = xrScene.scene.getObjectByName('artar-wall-surfaces')
+    const outline = xrScene.scene.getObjectByName('artar-drag-outline')
+    const model = outline.parent
+    const position = model.position.clone()
+    engine.setPlanesVisible(false)
+    for (let i = 0; i < 3; i++) {
+      now += 700
+      frame('NORMAL', points)
+    }
+    expect(surfaces.visible).toBe(false)
+    expect(xrScene.scene.getObjectByName('artar-debug').visible).toBe(false)
+    expect(outline.visible).toBe(false)
+    expect(model.visible).toBe(true)
+    expect(model.position).toEqual(position)
+    expect(updates.at(-1)).toMatchObject({ wallCount: 1, placedWallId: id })
+    engine.setPlanesVisible(true)
+    expect(surfaces.visible).toBe(true)
+    expect(outline.visible).toBe(true)
+    expect(model.position).toEqual(position)
+  })
   it('removes and excludes a feature-point plane until the room is rescanned', () => {
     engine.setDebug(true)
     document.querySelector('.ar-canvas').getBoundingClientRect = () => ({

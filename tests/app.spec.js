@@ -6,6 +6,7 @@ import { defaults } from '../src/data/storage.js'
 
 const setArt = vi.fn(async () => true)
 const setDebug = vi.fn()
+const setPlanesVisible = vi.fn()
 const startAR = vi.fn(async () => true)
 const place = vi.fn()
 const reset = vi.fn()
@@ -19,6 +20,10 @@ const Studio = defineComponent({
     expose({
       setArt,
       setDebug,
+      setPlanesVisible(value) {
+        setPlanesVisible(value)
+        emit('state', { planesVisible: value })
+      },
       startAR,
       nudge: vi.fn(),
       guides: vi.fn(),
@@ -54,6 +59,7 @@ beforeEach(() => {
   localStorage.clear()
   setArt.mockClear()
   setDebug.mockClear()
+  setPlanesVisible.mockClear()
   place.mockClear()
   reset.mockClear()
   removeWall.mockClear()
@@ -66,6 +72,56 @@ afterEach(() => {
   delete document.modelContext
 })
 describe('gallery flows', () => {
+  it('toggles plane overlays without resetting placement and restores them for debug', async () => {
+    const w = create()
+    await flushPromises()
+    expect(w.find('.plane-visibility-toggle').exists()).toBe(false)
+    const studio = w.findComponent(Studio)
+    studio.vm.$emit('state', {
+      mode: 'ar',
+      placed: true,
+      tracking: true,
+      wallCount: 2,
+      focusedWallId: 'wall-b',
+      placedWallId: 'wall-a',
+      canPlace: true,
+      artHint: { x: 50, y: 60 },
+    })
+    await flushPromises()
+    const toggle = () => w.find('.plane-visibility-toggle')
+    expect(toggle().attributes('aria-label')).toBe('平面を非表示')
+    expect(w.find('.remove-plane').exists()).toBe(true)
+    await w.find('.debug-toggle').trigger('click')
+    expect(w.find('.ar-debug-panel').exists()).toBe(true)
+    await toggle().trigger('click')
+    expect(setPlanesVisible).toHaveBeenLastCalledWith(false)
+    expect(toggle().attributes('aria-pressed')).toBe('false')
+    expect(toggle().attributes('aria-label')).toBe('平面を表示')
+    expect(w.find('.scan-reticle').exists()).toBe(false)
+    expect(w.find('.scan-center').exists()).toBe(false)
+    expect(w.find('.art-drag-hint').exists()).toBe(false)
+    expect(w.find('.ar-debug-panel').exists()).toBe(false)
+    expect(w.find('.ar-move-instruction').text()).toContain(
+      '作品をドラッグして移動',
+    )
+    expect(reset).not.toHaveBeenCalled()
+    expect(removeWall).not.toHaveBeenCalled()
+    await toggle().trigger('click')
+    expect(setPlanesVisible).toHaveBeenLastCalledWith(true)
+    expect(w.find('.scan-center').exists()).toBe(true)
+    expect(w.find('.art-drag-hint').exists()).toBe(true)
+    expect(w.find('.ar-debug-panel').exists()).toBe(true)
+    await toggle().trigger('click')
+    await w.find('.debug-toggle').trigger('click')
+    expect(setPlanesVisible).toHaveBeenLastCalledWith(true)
+    expect(w.find('.ar-debug-panel').exists()).toBe(true)
+    await toggle().trigger('click')
+    studio.vm.$emit('state', { placed: false })
+    await flushPromises()
+    expect(w.find('.ar-move-instruction').text()).toContain(
+      '平面を表示して配置',
+    )
+  })
   it('shows an asynchronous AR startup rejection and allows a new attempt', async () => {
     const w = create()
     await flushPromises()
