@@ -1,0 +1,62 @@
+name: Validate Web and iOS
+on:
+  push:
+    branches: [feat/ios-arkit-webxr]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:arkit-runtime
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist
+          retention-days: 7
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Build app and embedded App Clip without signing
+        working-directory: ios
+        run: >-
+          xcodebuild -project ArtAR.xcodeproj -scheme ArtAR
+          -configuration Release -destination 'generic/platform=iOS'
+          -derivedDataPath build CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO build > ios-build.log 2>&1
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-log
+          path: ios/ios-build.log
+          retention-days: 7
+      - name: Upload unsigned app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-app
+          path: ios/build/Build/Products/Release-iphoneos/ArtAR.app
+          retention-days: 7
