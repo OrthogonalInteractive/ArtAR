@@ -1,4 +1,4 @@
-# iOS ARKit runtime（作業ブランチ）
+# iOS ARKit runtime
 
 SafariのJavaScriptだけでARKitを動かすことはできません。このブランチでは、
 ARKitを動かすネイティブ実行環境（通常アプリ／App Clip）にArtARを読み込みます。
@@ -32,8 +32,7 @@ open ArtAR.xcodeproj
 ```
 
 1. `project.yml`の`ARTAR_PAGE_URL`を、このブランチのWebビルドを公開したHTTPS URLへ変更。
-   現在の既定URLはmasterの公開サイトなので、そのままでは新しいブリッジコードを
-   読み込めません。masterへの公開はこの作業に含めていません。
+   既定URLはmasterのGitHub Pagesです。Web側のARKit対応コードを公開した後に利用します。
 2. Bundle IdentifierとSigning Teamを自分の設定に変更。
 3. 最初は`ArtAR`スキームで実機にインストールして確認。
 4. ページの「カメラを開始」でARKitが起動します。iOSシミュレータでは検証不可。
@@ -57,7 +56,7 @@ App Store Connectで親アプリとApp Clipの登録、App Clip Experience、署
 - 背景移行、ARKit中断、復帰時の古い壁／作品の破棄。
 - 同じ端末の通常Safariが8th Wallに戻ること、AndroidがWebXRのままであること。
 
-この環境ではXcodeビルド・署名・実機の位置精度は検証できていません。
+実機での位置精度・署名・App Clip公開は自動ビルドとは別に確認が必要です。
 
 ## 依存パッケージを取得できない環境での検証
 
@@ -66,3 +65,22 @@ App Store Connectで親アプリとApp Clipの登録、App Clip Experience、署
 幾何変換はスタブなので、この検証だけでは実際の壁形状やWebGL描画を保証しません。
 依存パッケージが利用できる環境では、必ず`npm ci`・`npm test`・`npm run build`を実行し、
 続いてXcodeと実機で確認してください。
+
+## クラウドでのビルド・公開
+
+`.github/workflows/validate.yml`で、LinuxのWebテスト／ビルドとmacOSのXcodeビルドを
+実行します。CodexのLinux環境自体ではXcodeは動きませんが、GitHub ActionsのmacOS
+ランナーで`xcodegen`と`xcodebuild`を実行できます。
+
+- Web: `npm ci`、Vitest、ブリッジの独立テスト、Viteビルド。
+- iOS: 親アプリと埋め込みApp ClipをReleaseで署名なしビルド。
+- 成功時: ActionsのArtifactsから`web-dist`と`ios-unsigned-app`を取得できます。
+- `ios-unsigned-app`はコンパイル確認用で、iPhoneへインストールできる署名済みIPAではありません。
+- Web公開: masterへ反映すると既存の`deploy.yml`がGitHub Pagesへ公開します。
+
+TestFlightやApp Clipを配布するにはApple DeveloperのTeam、App Store Connectのアプリ、
+Bundle ID、証明書・Provisioning Profile、または認証付き自動署名を設定する必要があります。
+署名情報はGitHub Secretsで管理し、チャットやGitへ秘密鍵を保存しないでください。
+GitHub Pagesの`/ArtAR/`配下だけでは、App Clip起動用ドメイン直下の
+`/.well-known/apple-app-site-association`を管理できません。配布には管理可能な独自ドメインか、
+Appleの起動URLを含めたApp Clip Experienceの設定を別途決める必要があります。

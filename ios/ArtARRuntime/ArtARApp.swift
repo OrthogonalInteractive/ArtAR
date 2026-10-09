@@ -130,7 +130,7 @@ final class RuntimeController: UIViewController, WKScriptMessageHandler,
         // Structured arguments avoid script interpolation and escaping issues.
         webView.callAsyncJavaScript(
             "window.dispatchEvent(new CustomEvent('artar-arkit', {detail: packet}))",
-            arguments: ["packet": packet], in: nil, contentWorld: .page,
+            arguments: ["packet": packet], in: nil, in: .page,
             completionHandler: nil)
     }
 
@@ -153,7 +153,7 @@ final class RuntimeController: UIViewController, WKScriptMessageHandler,
         case .notAvailable: tracking = "unavailable"
         case .limited: tracking = "limited"
         }
-        let planes: [[String: Any]] = frame.anchors.compactMap { anchor in
+        let planes: [[String: Any]] = frame.anchors.compactMap { anchor -> [String: Any]? in
             guard let plane = anchor as? ARPlaneAnchor else { return nil }
             let geometry = plane.geometry
             guard geometry.boundaryVertexCount >= 3, geometry.boundaryVertexCount <= 2048 else { return nil }
