@@ -1,5 +1,19 @@
-export const arBackend = () =>
-  /Android/i.test(navigator.userAgent) ? 'webxr' : '8thwall'
+export const isIOS = () =>
+  /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+
+// Only the companion native runtime installs this message handler.
+// A query parameter alone must never enable the ARKit path in Safari.
+export const hasARKitBridge = () =>
+  isIOS() &&
+  typeof window.webkit?.messageHandlers?.artarAR?.postMessage === 'function'
+
+export const arBackend = () => {
+  if (hasARKitBridge()) return 'arkit'
+  if (/Android/i.test(navigator.userAgent)) return 'webxr'
+  if (isIOS() && navigator.xr?.requestSession) return 'webxr'
+  return '8thwall'
+}
 
 export const WEBXR_UNAVAILABLE =
   'この端末・ブラウザではWebXR ARを利用できません。ARCore対応のAndroid端末でChromeを開き、Google Play開発者サービス（AR）を更新してください。ルームプレビューは引き続き利用できます。'
@@ -9,7 +23,9 @@ export async function prepareWebXR() {
     !navigator.xr?.isSessionSupported ||
     !(await navigator.xr.isSessionSupported('immersive-ar'))
   )
-    throw new Error(WEBXR_UNAVAILABLE)
+    throw new Error(isIOS()
+      ? 'このiPhone / iPadの実行環境ではWebXR ARを利用できません。ARKit対応の実行環境で開いてください。ルームプレビューは引き続き利用できます。'
+      : WEBXR_UNAVAILABLE)
 }
 
 export function webXRError(error) {
@@ -21,3 +37,4 @@ export function webXRError(error) {
     'WebXRを開始できませんでした。Chromeで再試行してください。'
   )
 }
+

@@ -1339,6 +1339,13 @@ label {
 .webxr-active .ar-canvas {
   opacity: 0;
 }
+.arkit-active,
+.arkit-active body {
+  background: transparent !important;
+}
+.arkit-active .webxr-active .ar-canvas {
+  opacity: 1;
+}
 .app-shell:xr-overlay {
   background: transparent;
 }
@@ -2557,3 +2564,4 @@ label {
     width: min(270px, 40vw);
   }
 }
+
