@@ -155,10 +155,9 @@ final class RuntimeController: UIViewController, WKScriptMessageHandler,
         }
         let planes: [[String: Any]] = frame.anchors.compactMap { anchor -> [String: Any]? in
             guard let plane = anchor as? ARPlaneAnchor else { return nil }
-            let geometry = plane.geometry
-            guard geometry.boundaryVertexCount >= 3, geometry.boundaryVertexCount <= 2048 else { return nil }
-            let polygon = (0..<geometry.boundaryVertexCount).map { index -> [String: Float] in
-                let p = geometry.boundaryVertices[index]
+            let vertices = plane.geometry.boundaryVertices
+            guard vertices.count >= 3, vertices.count <= 2048 else { return nil }
+            let polygon = vertices.map { p -> [String: Float] in
                 return ["x": p.x, "y": p.y, "z": p.z]
             }
             let label: String
