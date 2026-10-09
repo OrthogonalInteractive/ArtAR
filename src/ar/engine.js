@@ -12,6 +12,7 @@ import {
 import { artDimensions } from '../data/catalog.js'
 import { createARDebugLayer, debugSummary } from './debug.js'
 import { arBackend, prepareWebXR, WEBXR_UNAVAILABLE } from './platform.js'
+import { createARKitSession } from './arkit.js'
 import { createWebXRSession } from './webxr.js'
 import { createWallFeedback, createDragOutline } from './wall-feedback.js'
 import { createWallExpansion } from './wall-expansion.js'
@@ -25,6 +26,7 @@ export const ENGINE_URL =
   'https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1.0.0/dist/xr.js'
 let loading
 export function prepareAR() {
+  if (arBackend() === 'arkit') return Promise.resolve()
   if (arBackend() === 'webxr') return prepareWebXR()
   if (window.XR8) return Promise.resolve(window.XR8)
   if (loading) return loading
@@ -71,6 +73,7 @@ export function cameraUnsupportedReason() {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   if (!handheld)
     return 'PCではルームプレビューをご利用ください。公開URLをiPhone / iPadまたはAndroidで開くと、ARを開始できます。'
+  if (arBackend() === 'arkit') return null
   if (arBackend() === 'webxr')
     return navigator.xr?.requestSession ? null : WEBXR_UNAVAILABLE
   if (!navigator.mediaDevices?.getUserMedia)
@@ -697,7 +700,7 @@ export function createExperience({ canvas, onState, onError }) {
   }
   function startAR(host) {
     if (mode === 'ar' || disposed) return
-    return arBackend() === 'webxr' ? startWebXR(host) : startLegacyAR(host)
+    return arBackend() !== '8thwall' ? startWebXR(host) : startLegacyAR(host)
   }
   async function startWebXR(host) {
     const unsupported = cameraUnsupportedReason()
@@ -751,7 +754,9 @@ export function createExperience({ canvas, onState, onError }) {
         debugLayer.setEnabled(debugEnabled && planesVisible)
       }
       if (art) void setArt(art)
-      session = createWebXRSession({
+      const sessionFactory = arBackend() === 'arkit'
+        ? createARKitSession : createWebXRSession
+      session = sessionFactory({
         renderer,
         scene,
         camera,
@@ -1028,3 +1033,4 @@ export function createExperience({ canvas, onState, onError }) {
     },
   }
 }
+

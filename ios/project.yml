@@ -1,0 +1,46 @@
+name: ArtAR
+options:
+  deploymentTarget:
+    iOS: '16.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    ARTAR_PAGE_URL: https://orthogonalinteractive.github.io/ArtAR/
+targets:
+  ArtAR:
+    type: application
+    platform: iOS
+    sources: [ArtARRuntime]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.orthogonalinteractive.artar
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_ArtARPageURL: $(ARTAR_PAGE_URL)
+        INFOPLIST_KEY_NSCameraUsageDescription: 壁を認識して作品を実寸で配置するためにカメラを使用します。
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    dependencies:
+      - target: ArtARClip
+        embed: true
+  ArtARClip:
+    type: application.on-demand-install-capable
+    platform: iOS
+    sources: [ArtARRuntime]
+    info:
+      path: ArtARClip-Info.plist
+      properties:
+        CFBundleDisplayName: ArtAR
+        ArtARPageURL: $(ARTAR_PAGE_URL)
+        NSCameraUsageDescription: 壁を認識して作品を実寸で配置するためにカメラを使用します。
+        NSAppClip:
+          NSAppClipRequestEphemeralUserNotification: false
+          NSAppClipRequestLocationConfirmation: false
+        UILaunchScreen: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.orthogonalinteractive.artar.Clip
+    entitlements:
+      path: ArtARClip.entitlements
+      properties:
+        com.apple.developer.parent-application-identifiers:
+          - $(AppIdentifierPrefix)com.orthogonalinteractive.artar

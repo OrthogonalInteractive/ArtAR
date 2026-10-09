@@ -1,5 +1,8 @@
 # ArtAR
 
+作業ブランチのiOS ARKit実行環境（通常アプリ／App Clip）の実装と起動手順は
+[iOS ARKit runtime](docs/ios-arkit.md)を参照してください。
+
 額装アートを実寸で壁に飾るWebARデモ。Vue 3 + Vite + Three.js、AndroidはWebXR / ARCore、iOSは8th Wallで構成し、GitHub Pagesに静的配置できます。
 
 `../portfolio/` の `src/xr/main.js`、`marker.js`、`support.js`、`xr/index.html` を参照しています。Vue・Three.jsのバージョン、`window.THREE` 経由のXR8連携、8th Wall配布エンジン、Absolute Scale方式を引き継ぎました。名刺の画像認識・ハンドトラッキング・Firebaseは、この用途に必要ないため組み込んでいません。
@@ -172,3 +175,4 @@ WebXRについては、OS分岐、メートル単位の深度変換、床の除�
 - [WebXR DOM Overlay](https://www.w3.org/TR/webxr-dom-overlays-1/)
 
 iOS向けの8th Wallは `@8thwall/engine-binary@1.0.0` をjsDelivrから読み込みます。エンジンは独自の配布ライセンスで提供されるバイナリです。Google Fontsを任意の書体用に読み込み、接続できない場合はシステムフォントで表示します。作品画像・QR生成に外部画像APIは使いません。アプリにカメラ画像を送信・保存する実装、解析サービス、アクセス解析はありません。
+

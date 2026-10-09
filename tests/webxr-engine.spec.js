@@ -469,13 +469,16 @@ describe('Android WebXR routing and lifecycle', () => {
     })
     expect(engine.place()).toBe(true)
   })
-  it('prepares Android without loading 8th Wall and leaves iOS/iPadOS routed to XR8', async () => {
+  it('prefers available WebXR on iOS and keeps Safari without WebXR routed to XR8', async () => {
     expect(cameraUnsupportedReason()).toBeNull()
     await prepareAR()
     expect(navigator.xr.isSessionSupported).toHaveBeenCalledWith('immersive-ar')
     expect(document.querySelector('script[src*="8thwall"]')).toBeNull()
     expect(arBackend()).toBe('webxr')
     navigator.userAgent = 'iPhone Safari'
+    expect(arBackend()).toBe('webxr')
+    await prepareAR()
+    delete navigator.xr
     expect(arBackend()).toBe('8thwall')
     expect(await prepareAR()).toBe(window.XR8)
     navigator.userAgent = 'Macintosh Safari'
@@ -821,3 +824,4 @@ describe('Android WebXR routing and lifecycle', () => {
     expect(engine.mode).toBe('preview')
   })
 })
+

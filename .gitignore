@@ -3,3 +3,9 @@ dist/
 .DS_Store
 .env.local
 coverage/
+
+ios/build/
+ios/*.xcodeproj/
+ios/ArtARClip-Info.plist
+ios/ArtARClip.entitlements
+ios/ios-build.log
