@@ -8,6 +8,12 @@ export const hasARKitBridge = () =>
   isIOS() &&
   typeof window.webkit?.messageHandlers?.artarAR?.postMessage === 'function'
 
+export const arkitRequired = () => import.meta.env?.VITE_REQUIRE_ARKIT === 'true'
+export const ARKIT_REQUIRED_MESSAGE =
+  'このテスト版はARKit専用です。TestFlightからArtARのApp Clipを起動してください。SafariではARKitを利用できません。'
+export const arRequirementError = () =>
+  arkitRequired() && !hasARKitBridge() ? ARKIT_REQUIRED_MESSAGE : null
+
 export const arBackend = () => {
   if (hasARKitBridge()) return 'arkit'
   if (/Android/i.test(navigator.userAgent)) return 'webxr'

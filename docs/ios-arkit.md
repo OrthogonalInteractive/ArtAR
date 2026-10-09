@@ -84,3 +84,48 @@ Bundle ID、証明書・Provisioning Profile、または認証付き自動署名
 GitHub Pagesの`/ArtAR/`配下だけでは、App Clip起動用ドメイン直下の
 `/.well-known/apple-app-site-association`を管理できません。配布には管理可能な独自ドメインか、
 Appleの起動URLを含めたApp Clip Experienceの設定を別途決める必要があります。
+
+## Team 85JY63L889のテスト版
+
+- 通常版: https://orthogonalinteractive.github.io/ArtAR/
+- ARKit専用テスト版: https://orthogonalinteractive.github.io/ArtAR/arkit-test/
+- iOSの既定の読み込み先はテスト版です。
+- `VITE_REQUIRE_ARKIT=true`のWebビルドはネイティブブリッジを必須とし、
+  Safariで8th Wallを起動しません。URLだけでSafariがARKit対応になるわけではありません。
+
+### TestFlightの準備
+
+Apple Developer / App Store ConnectのTeamは`85JY63L889`を使用します。
+親アプリ`com.orthogonalinteractive.artar`とApp Clip
+`com.orthogonalinteractive.artar.Clip`を同じTeamで登録してください。
+App Store Connectの「マイApp」に親アプリのレコードを作成し、必要な契約を有効にします。
+親アプリにはAssociated App Clip App Identifiers、App ClipにはParent Application
+Identifiersのエンタイトルメントを設定しています。
+
+App Store Connectの「ユーザとアクセス → 統合 → App Store Connect API」で、
+証明書・プロファイルへのアクセスとクラウド署名を利用できるTeam APIキーを作成します。
+権限が不足する場合は管理者に設定を依頼してください。APIキーはTeam IDとは別の認証情報です。
+
+GitHubのSettings → Secrets and variables → Actionsへ次のRepository secretsを登録します。
+
+| Secret | 内容 |
+|---|---|
+| APP_STORE_CONNECT_KEY_ID | APIキーのKey ID |
+| APP_STORE_CONNECT_ISSUER_ID | Team APIキーのIssuer ID |
+| APP_STORE_CONNECT_PRIVATE_KEY | ダウンロードした.p8の全文（改行を含む） |
+
+.p8はGitやチャットに保存しないでください。この接続ではSecretsの値は読み取りません。
+自動署名時にApple側の証明書・Provisioning設定が不足している場合、ワークフローは失敗し、
+Appleのエラーを表示します。Team IDを設定しただけで署名が完了したことにはなりません。
+
+登録後、Actions → 「Upload ARKit test build to TestFlight」→ Run workflow → masterを選択。
+macOSで自動署名して親アプリとApp ClipをArchiveし、App Store Connectへアップロードします。
+APIキーは一時ファイルに保存し、実行終了時に削除します。公開App Storeへの審査提出は行いません。
+
+Appleの処理が完了した後、App Store ConnectのTestFlightでテスト端末のユーザーを追加し、
+App Clipのテスト用ExperienceにテストURLを登録してください。
+まず内部テスターで検証するのが簡単です。外部テスターにはベータ審査が必要になる場合があります。
+実機のTestFlightからApp Clipを起動し、「カメラを開始」でARKitの壁検知を確認します。
+
+- [Apple: App ClipのTestFlightテスト](https://developer.apple.com/help/app-store-connect/test-a-beta-version/test-an-app-clip-experience)
+- [Apple: Xcodeのクラウド署名](https://developer.apple.com/videos/play/wwdc2021/10204/)

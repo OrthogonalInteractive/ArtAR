@@ -11,7 +11,7 @@ import {
 } from './walls.js'
 import { artDimensions } from '../data/catalog.js'
 import { createARDebugLayer, debugSummary } from './debug.js'
-import { arBackend, prepareWebXR, WEBXR_UNAVAILABLE } from './platform.js'
+import { arBackend, prepareWebXR, WEBXR_UNAVAILABLE, arRequirementError } from './platform.js'
 import { createARKitSession } from './arkit.js'
 import { createWebXRSession } from './webxr.js'
 import { createWallFeedback, createDragOutline } from './wall-feedback.js'
@@ -26,6 +26,8 @@ export const ENGINE_URL =
   'https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1.0.0/dist/xr.js'
 let loading
 export function prepareAR() {
+  const requirement = arRequirementError()
+  if (requirement) return Promise.reject(new Error(requirement))
   if (arBackend() === 'arkit') return Promise.resolve()
   if (arBackend() === 'webxr') return prepareWebXR()
   if (window.XR8) return Promise.resolve(window.XR8)
@@ -66,6 +68,8 @@ export function prepareAR() {
   return loading
 }
 export function cameraUnsupportedReason() {
+  const requirement = arRequirementError()
+  if (requirement) return requirement
   if (!window.isSecureContext)
     return 'ARにはHTTPS接続が必要です。公開URLをスマートフォンで開いてください。'
   const handheld =

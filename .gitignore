@@ -9,3 +9,4 @@ ios/*.xcodeproj/
 ios/ArtARClip-Info.plist
 ios/ArtARClip.entitlements
 ios/ios-build.log
+ios/ArtAR.entitlements

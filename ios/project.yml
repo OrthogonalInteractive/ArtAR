@@ -5,8 +5,12 @@ options:
 settings:
   base:
     SWIFT_VERSION: '5.0'
+    DEVELOPMENT_TEAM: 85JY63L889
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: '1.0'
+    CURRENT_PROJECT_VERSION: '1'
     TARGETED_DEVICE_FAMILY: '1,2'
-    ARTAR_PAGE_URL: https://orthogonalinteractive.github.io/ArtAR/
+    ARTAR_PAGE_URL: https://orthogonalinteractive.github.io/ArtAR/arkit-test/
 targets:
   ArtAR:
     type: application
@@ -19,6 +23,11 @@ targets:
         INFOPLIST_KEY_ArtARPageURL: $(ARTAR_PAGE_URL)
         INFOPLIST_KEY_NSCameraUsageDescription: 壁を認識して作品を実寸で配置するためにカメラを使用します。
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    entitlements:
+      path: ArtAR.entitlements
+      properties:
+        com.apple.developer.associated-appclip-app-identifiers:
+          - $(AppIdentifierPrefix)com.orthogonalinteractive.artar.Clip
     dependencies:
       - target: ArtARClip
         embed: true

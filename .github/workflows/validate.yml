@@ -1,7 +1,7 @@
 name: Validate Web and iOS
 on:
   push:
-    branches: [feat/ios-arkit-webxr]
+    branches: [feat/ios-arkit-webxr, feat/arkit-testflight]
   pull_request:
     branches: [master, main]
   workflow_dispatch:
@@ -23,6 +23,10 @@ jobs:
       - run: npm test
       - run: npm run test:arkit-runtime
       - run: npm run build
+      - name: Build isolated ARKit test site
+        env:
+          VITE_REQUIRE_ARKIT: 'true'
+        run: npm run build -- --outDir dist/arkit-test --emptyOutDir
       - uses: actions/upload-artifact@v4
         with:
           name: web-dist

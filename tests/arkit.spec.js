@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PerspectiveCamera, Scene, Matrix4 } from 'three'
 import { createARKitSession } from '../src/ar/arkit.js'
-import { arBackend } from '../src/ar/platform.js'
+import { arBackend, arRequirementError } from '../src/ar/platform.js'
 
 let driver, options, postMessage
 const identity = new Matrix4().toArray()
@@ -27,8 +27,18 @@ afterEach(async () => {
   delete window.webkit
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 describe('ARKit native bridge', () => {
+  it('requires the native bridge only in the isolated ARKit test build', () => {
+    vi.stubEnv('VITE_REQUIRE_ARKIT', 'true')
+    expect(arRequirementError()).toBeNull()
+    delete window.webkit
+    expect(arRequirementError()).toContain('TestFlight')
+    vi.stubEnv('VITE_REQUIRE_ARKIT', undefined)
+    expect(arRequirementError()).toBeNull()
+    window.webkit = { messageHandlers: { artarAR: { postMessage } } }
+  })
   it('selects the companion runtime only when its native handler exists', () => {
     expect(arBackend()).toBe('arkit')
     delete window.webkit
