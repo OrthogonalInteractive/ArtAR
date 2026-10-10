@@ -10,11 +10,11 @@
 </p>
 
 <p align="center">
-  <a href="https://orthogonalinteractive.github.io/ArtAR/">https://orthogonalinteractive.github.io/ArtAR/</a>
+  <a href="https://artar-orthogonalinteractive.com/">https://artar-orthogonalinteractive.com/</a>
 </p>
 
 <p align="center">
-  <a href="https://orthogonalinteractive.github.io/ArtAR/">
+  <a href="https://artar-orthogonalinteractive.com/">
     <img src="assets/artar-qr.png" alt="Scan to open ArtAR on your phone" width="240" height="240">
   </a>
 </p>
