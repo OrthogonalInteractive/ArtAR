@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-0ITjpqB7ut/JweJarA9KL0rDzyKDc/jpYZyus6IycHs='; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>ArtAR — このページは存在しません</title>
+    <script>
+      // GitHub Pages serves this page for unknown paths. A gallery URL (/<22-char id>)
+      // is handed to the app as /?gallery=<id>; nothing else from the URL is kept.
+      // The pattern matches src/shared/gallery-id.ts (tests/gallery-id.spec.ts).
+      var match = /^\/([A-Za-z0-9]{22})\/?$/.exec(location.pathname)
+      if (match) location.replace('/?gallery=' + match[1])
+    </script>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: sans-serif;
+        color: #28312b;
+        background: #f7f8f5;
+        text-align: center;
+      }
+      a {
+        color: #40562c;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>このページは存在しません</h1>
+      <p>URLをご確認ください。</p>
+      <p><a href="/">ArtAR のトップページへ</a></p>
+    </main>
+  </body>
+</html>
