@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; script-src &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src &#39;self&#39;; connect-src &#39;none&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;; frame-ancestors &#39;none&#39;">
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f7f8f5" />
+    <meta name="description" content="ArtAR が取り扱う情報とプライバシーについて説明します。" />
+    <title>プライバシーポリシー — ArtAR</title>
+    <style>:root{--lightningcss-light:initial;--lightningcss-dark: ;color-scheme:light;color:#28312b;background:#f7f8f5;font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif}body{margin:0;line-height:1.75}header,main,footer{width:min(100% - 40px,820px);margin-inline:auto}header{border-bottom:1px solid #dfe4dc;padding:24px 0 16px}header a,footer a,main a{color:#40562c}main{padding:32px 0 56px}h1{margin:0 0 8px;font-size:clamp(1.6rem,5vw,2.25rem);line-height:1.35}h2{margin-top:2.5rem;font-size:1.3rem;line-height:1.5}h3{margin-top:1.6rem;font-size:1.05rem;line-height:1.5}p,ul{margin:.8rem 0}li+li{margin-top:.35rem}time,.muted{color:#657064;font-size:.9rem}.summary{background:#eef1e9;border-left:3px solid #84976e;padding:14px 18px}.summary ul{margin:.4rem 0;padding-left:1.2rem}table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.92rem}th,td{text-align:left;vertical-align:top;overflow-wrap:anywhere;border:1px solid #dfe4dc;padding:9px 10px}th{background:#eef1e9}footer{border-top:1px solid #dfe4dc;padding:18px 0 28px;font-size:.9rem}@media (width<=560px){header,main,footer{width:min(100% - 28px,820px)}table{font-size:.82rem}th,td{padding:7px}}</style>
+  </head>
+  <body>
+    <header><a href="/">ArtAR トップページ</a></header>
+    <main>
+      <h1>ArtAR プライバシーポリシー</h1>
+      <p class="muted">最終更新：2026年10月13日　運営者：Jun Tachikawa（個人事業主）</p>
+
+      <h2>要点</h2>
+      <div class="summary">
+        <ul>
+          <li>カメラ映像や写真を ArtAR のサーバーへ送信しません。壁の認識も写真の作成も、お使いの端末の中で行います。</li>
+          <li>アートの閲覧や AR にログインは不要です。閲覧者の氏名・メールアドレス・位置情報・広告識別子は扱いません。</li>
+          <li>サービス改善のため、閲覧者を特定しない利用状況（ページ表示、AR の事前対応判定、開始や壁の検出など）を記録します。モバイルWeb版（iPhone / iPadを除く）では、ブラウザが提供する場合に限り機種名も記録します。iOSアプリ・App Clip・iPhone / iPadのブラウザでは機種名を記録しません。記録は運営者が記録を有効にしている場合だけ行い、広告やトラッキングには使いません。</li>
+        </ul>
+      </div>
+
+      <h2>対象</h2>
+      <p>本書は、Web 版 ArtAR（<code>https://artar-orthogonalinteractive.com/</code> とその配下）、管理アプリ（<code>/admin/</code>）、iOS 版 ArtAR（親アプリ）と ArtAR App Clip に適用されます。内容は現行の実装に基づいています。</p>
+
+      <h2>公開ページと AR で扱う情報</h2>
+
+      <h3>端末の中だけで処理するもの</h3>
+      <ul>
+        <li><strong>カメラ映像</strong>：壁の認識とアートの表示のために、ブラウザまたはアプリの中で処理します。iOS の親アプリと App Clip では ARKit が処理し、カメラ映像そのものは Web 側へ渡しません。「写真」で合成した画像だけを、画面での確認と保存のために Web 側へ渡します。</li>
+        <li><strong>AR の写真</strong>：「写真」を押したときだけ、カメラ映像とアートにギャラリー名・アーティスト名・アート名・寸法を加えた画像を端末内で作ります。販売中で購入ページが設定されたアートに限り、購入ページを開く QR を加えます。合成した画像は画面で確認してから保存または共有でき、保存先は端末だけです（ブラウザでは共有シートまたはダウンロード、iOS の親アプリでは写真ライブラリ、App Clip では共有シート）。</li>
+        <li><strong>権限</strong>：カメラの許可は AR の開始時に求めます。iOS の親アプリでは写真を初めて保存するときに写真ライブラリへの「追加のみ」の許可を求め、ライブラリの読み取りは行いません。App Clip は写真ライブラリを使えないため、合成した画像を共有シート（AirDrop など）で渡します。WebXR対応ブラウザでは写真のためにカメラアクセスを任意で求めることがあります。位置情報と通知の許可は求めません。</li>
+      </ul>
+
+      <h3>利用状況の記録</h3>
+      <p>運営者が記録を有効にしている場合だけ、閲覧者を特定しない利用状況を Supabase に記録します。</p>
+      <ul>
+        <li><strong>記録する内容</strong>：ページの表示、AR の事前対応判定、開始・開始できなかった理由（決められたコードのみ）・壁の検出・アートの配置・追跡の喪失・写真の保存・終了と所要時間、販売中のアートの購入ページを開いたこと、AR で表示したアート。あわせて、表示したギャラリーとアートの ID、OS とブラウザの種類とメジャーバージョン、端末区分、モバイルWeb版（iPhone / iPadを除く）でブラウザが提供する場合の機種名、画面の大きさの区分、主言語、実行環境（ブラウザ・iOS アプリ）、AR の方式を記録します。事前判定はカメラを起動せず、権限も要求しません。AR を開始できる保証ではありません。</li>
+        <li><strong>記録しない内容</strong>：カメラ映像や写真、空間の形状や深度情報、位置情報、端末固有 ID、氏名やメールアドレス、広告識別子や Cookie などの端末をまたぐ識別子、自由入力のエラーメッセージ、購入ページでの購入の有無や購入者の情報。IP アドレスと User-Agent は通信時に Supabase に届きますが、ArtAR のデータベースには保存しません。</li>
+        <li><strong>識別子</strong>：ページを読み込むたびに作る乱数（セッション ID）でイベントをまとめます。端末には保存せず、再読み込みや別の訪問では別の値になります。</li>
+        <li><strong>閲覧できる人</strong>：運営者は全体の集計を閲覧できます。アーティストは自分のアートの購入クリック数と過去90日間のアート表示回数だけを閲覧でき、個々のイベントや他のアーティストの集計は閲覧できません。第三者には提供しません。</li>
+        <li><strong>保存期間</strong>：利用状況イベントは保存期間（90日）を過ぎたものを運営者が定期的に削除します。AR で表示したアートの記録（アート表示イベントの生データは削除せず、期限を設けず保存します）は例外で、アート表示回数は過去90日間の異なるページ読み込み数として数えます。</li>
+      </ul>
+      <p>記録に失敗しても、ページや AR の利用には影響しません。</p>
+
+      <h2>接続先の事業者</h2>
+      <p>ページの表示や AR の実行に必要な範囲で、次の事業者のサーバーへ接続します。接続先には IP アドレス・User-Agent などの接続情報が渡り、それぞれのプライバシーポリシーに従って扱われます。</p>
+      <table>
+        <thead><tr><th>接続先</th><th>用途</th><th>経路</th></tr></thead>
+        <tbody>
+          <tr><td>GitHub Pages（GitHub, Inc.）</td><td>HTML・JavaScript の配信</td><td>すべて</td></tr>
+          <tr><td>Supabase（Supabase, Inc.）</td><td>アート・アーティスト・ギャラリーの公開情報とアート画像の配信、利用状況の記録、アーティストのアカウント</td><td>すべて</td></tr>
+          <tr><td>Google Fonts（Google LLC）</td><td>書体の取得。接続できない場合はシステムフォントを使用</td><td>すべて</td></tr>
+          <tr><td>jsDelivr</td><td>8th Wall エンジンの取得</td><td>iPhone / iPad のブラウザ</td></tr>
+          <tr><td>8th Wall（Niantic）</td><td>ブラウザ内でのカメラ映像の処理。エンジンから外部へ情報が送信されるかは未確認</td><td>iPhone / iPad のブラウザ</td></tr>
+          <tr><td>Apple</td><td>App Clip の配布・起動</td><td>iPhone / iPad の App Clip</td></tr>
+        </tbody>
+      </table>
+      <p>WebXRを使用するブラウザと iOS の親アプリ・App Clip（ARKit）では 8th Wall エンジンを読み込みません。</p>
+
+      <h2>アーティストのアカウント</h2>
+      <p>アートを登録するアーティスト（招待制）について、ログイン用のメールアドレスとパスワード（ハッシュ化して保存）、表示名・紹介文・HP/SNS リンク、登録したアート（画像を含む）・アートセット・共有・ギャラリーを Supabase に保存します。ギャラリーには任意で店舗名・店舗紹介・所在地・公式サイト URL・営業時間を登録できます。公開設定中のギャラリーと活動中のアーティストの公開情報は、誰でも閲覧できます。</p>
+      <ul>
+        <li><strong>退会</strong>：アーティストは管理アプリの「アカウント」画面からいつでも退会できます。退会するとアートと画像、アートセット、共有、ギャラリー、アーティスト情報、ログイン用アカウントとメールアドレスを削除し、元に戻せません。ギャラリーの URL と QR は無効になります。端末に保存済みの写真は端末に残ります。</li>
+        <li><strong>操作の記録</strong>：不正な変更や誤操作を調べるため、管理アプリでの編集（日時、操作したアカウントの ID と役割、操作の種類と対象、変更した項目の変更前後の値）を記録します。メールアドレス、パスワード、画像そのもの、閲覧の記録は含めません。閲覧できるのは運営者だけで、記録は追記のみです。1年を過ぎた記録は運営者が定期的に削除します。退会したアーティストの表示名・紹介文・HP/SNS リンクは記録から削除し、「退会済みのアーティスト」と表示します。</li>
+        <li>メール送信手段を設定するまでは、退会完了などの通知メールを送りません。</li>
+      </ul>
+
+      <h2>ギャラリーの URL と QR</h2>
+      <p>ギャラリーの URL（<code>/{galleryId}</code>）と QR は、表示するアートを絞り込むためのものです。URL を知っている人は誰でも同じ内容を見られるため、非公開情報の保護には使えません。アートやアーティストの HP/SNS リンクは外部サイトを新しいタブで開き、リンク先の取扱いはそのサイトのポリシーに従います。</p>
+
+      <h2>お問い合わせ</h2>
+      <p>運営者：Jun Tachikawa（個人事業主）<br />
+      連絡先：<a href="mailto:jtachikawa.work@gmail.com">jtachikawa.work@gmail.com</a></p>
+      <p>プライバシーに関するお問い合わせや、保有する個人情報の開示・訂正・削除のご請求は、上記のメールアドレスへお送りください。住所は、法令に基づく開示等のご請求に応じて、ご本人へ個別にお知らせします。</p>
+
+      <h2>変更について</h2>
+      <p>取り扱う情報が変わるときは本書を更新し、冒頭の最終更新日を改めます。</p>
+    </main>
+    <footer><a href="/">ArtAR トップページへ戻る</a></footer>
+  </body>
+</html>
